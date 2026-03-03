@@ -19,10 +19,12 @@ import (
 
 type Config struct {
 	ResolversFile string
+	Engine        string
 	Domain        string
 	Proxy         string
 	ProxyUser     string
 	ProxyPass     string
+	PubKey        string
 	Workers       int
 	TestURL       string
 	TunnelWait    int
@@ -34,7 +36,9 @@ type Config struct {
 func main() {
 	cfg := Config{}
 	flag.StringVar(&cfg.ResolversFile, "r", "", "Path to resolvers file")
+	flag.StringVar(&cfg.Engine, "e", "dnstt", "Tunnel engine: dnstt|slipstream")
 	flag.StringVar(&cfg.Domain, "d", "", "Tunnel domain (e.g. ns.domain.tld)")
+	flag.StringVar(&cfg.PubKey, "k", "", "DNSTT public key (required when -e dnstt)")
 	flag.StringVar(&cfg.Proxy, "x", "http", "Proxy protocol for listener: http|https|socks5|socks5h")
 	flag.StringVar(&cfg.ProxyUser, "U", "", "Optional proxy username")
 	flag.StringVar(&cfg.ProxyPass, "P", "", "Optional proxy password")
@@ -44,10 +48,21 @@ func main() {
 	flag.IntVar(&cfg.Timeout, "t", 5, "HTTP request timeout in seconds")
 	flag.IntVar(&cfg.StartPort, "l", 40000, "Starting local port for tunnel listeners")
 	flag.Parse()
+	cfg.Engine = strings.ToLower(strings.TrimSpace(cfg.Engine))
 	cfg.Proxy = strings.ToLower(strings.TrimSpace(cfg.Proxy))
 
 	if cfg.ResolversFile == "" || cfg.Domain == "" {
 		flag.Usage()
+		os.Exit(1)
+	}
+	switch cfg.Engine {
+	case "dnstt", "slipstream":
+	default:
+		fmt.Fprintf(os.Stderr, "error: -e must be one of: dnstt, slipstream\n")
+		os.Exit(1)
+	}
+	if cfg.Engine == "dnstt" && cfg.PubKey == "" {
+		fmt.Fprintf(os.Stderr, "error: -k is required when -e dnstt\n")
 		os.Exit(1)
 	}
 	switch cfg.Proxy {
@@ -60,9 +75,30 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error: -P requires -U\n")
 		os.Exit(1)
 	}
-	clientPath, err := exec.LookPath("slipstream-client")
+	if cfg.Workers < 1 {
+		fmt.Fprintf(os.Stderr, "error: -w must be >= 1\n")
+		os.Exit(1)
+	}
+	if cfg.Timeout < 1 {
+		fmt.Fprintf(os.Stderr, "error: -t must be >= 1\n")
+		os.Exit(1)
+	}
+	if cfg.TunnelWait < 0 {
+		fmt.Fprintf(os.Stderr, "error: -s must be >= 0\n")
+		os.Exit(1)
+	}
+	if cfg.StartPort < 1 || cfg.StartPort > 65535 {
+		fmt.Fprintf(os.Stderr, "error: -l must be between 1 and 65535\n")
+		os.Exit(1)
+	}
+	if cfg.StartPort+cfg.Workers-1 > 65535 {
+		fmt.Fprintf(os.Stderr, "error: port range overflow (-l + -w exceeds 65535)\n")
+		os.Exit(1)
+	}
+	e := fmt.Sprintf("%s-client", cfg.Engine)
+	clientPath, err := exec.LookPath(e)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "error: slipstream-client not found in PATH")
+		fmt.Fprintf(os.Stderr, "error: %s not found in PATH\n", e)
 		os.Exit(1)
 	}
 	cfg.ClientPath = clientPath
@@ -168,13 +204,23 @@ func scan(localPort int, cfg *Config, jobs <-chan string) {
 }
 
 func tryResolver(resolver string, localPort int, cfg *Config, client *http.Client) {
-	cmd := exec.Command(cfg.ClientPath,
-		"--tcp-listen-host", "127.0.0.1",
-		"--tcp-listen-port", strconv.Itoa(localPort),
-		"--resolver", resolver,
-		"--domain", cfg.Domain,
-		"--keep-alive-interval", "200",
-	)
+	cmd := &exec.Cmd{}
+	if cfg.Engine == "dnstt" {
+		cmd = exec.Command(cfg.ClientPath,
+			"-udp", resolver,
+			"-pubkey", cfg.PubKey,
+			cfg.Domain,
+			fmt.Sprintf("127.0.0.1:%d", localPort),
+		)
+	} else {
+		cmd = exec.Command(cfg.ClientPath,
+			"--tcp-listen-host", "127.0.0.1",
+			"--tcp-listen-port", strconv.Itoa(localPort),
+			"--resolver", resolver,
+			"--domain", cfg.Domain,
+			"--keep-alive-interval", "200",
+		)
+	}
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 

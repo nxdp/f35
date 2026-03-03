@@ -1,8 +1,8 @@
 # F35
 
-**F35** is an end‑to‑end DNS resolver scanner built to test real-world behavior of resolvers when used with **slipstream** tunnels.
+**F35** is an end-to-end DNS resolver scanner for real tunnel testing with **dnstt** or **slipstream**.
 
-It evaluates resolvers by actually establishing tunnels, sending traffic through them, and measuring real HTTP latency — not just whether the resolver replies.
+It establishes real tunnels, sends HTTP traffic through them, and measures latency. It does not just check DNS replies.
 
 ---
 
@@ -25,31 +25,31 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o f35 .
 3. Run a basic scan:
 
 ```bash
-f35 -r resolvers.txt -d t.example.com -x socks5h
+f35 -r resolvers.txt -e dnstt -k YOUR_PUBLIC_KEY -d t.example.com -x socks5h
 ```
 
 4. Save results:
 
 ```bash
-f35 -r resolvers.txt -d t.example.com -x socks5h | tee healthy.txt
+f35 -r resolvers.txt -e dnstt -k YOUR_PUBLIC_KEY -d t.example.com -x socks5h | tee healthy.txt
 ```
 
 ---
 
 ## What F35 Does
 
-F35 takes a list of DNS resolvers (`IP` or `IP:PORT`), a tunnel domain pointing to a production **slipstream-server**, and a worker count.
+F35 takes a resolver list (`IP` or `IP:PORT`), a tunnel domain, and worker count.
 
 For each resolver, F35:
 
-1. Spawns a `slipstream-client` process bound to a local port.
+1. Spawns either `dnstt-client` or `slipstream-client` on a local port.
 2. Waits for tunnel establishment (`-s`, milliseconds).
 3. Sends an HTTP request through the tunnel.
 4. If a response is received within the timeout, the resolver is **healthy** — its address and latency are printed to stdout.
 5. If the request times out or fails, the resolver is silently skipped.
-6. Kills the `slipstream-client` process and moves on.
+6. Stops the tunnel client process and moves on.
 
-This makes F35 a **true end-to-end resolver scanner**, not a synthetic or partial test.
+This makes F35 a true end-to-end resolver scanner, not a synthetic test.
 
 ---
 
@@ -68,9 +68,12 @@ One resolver per line:
 
 ## Requirements
 
-* **slipstream-client** must be installed and available in `$PATH`
-* A running and reachable **slipstream-server**
+* A tunnel client in `$PATH`:
+  * `dnstt-client` when using `-e dnstt`
+  * `slipstream-client` when using `-e slipstream`
+* A reachable tunnel server for the selected engine
 * A valid tunnel domain (e.g. `t.example.com`)
+* For DNSTT: server public key via `-k`
 
 ---
 
@@ -83,6 +86,10 @@ One resolver per line:
         Optional proxy username
   -d string
         Tunnel domain (e.g. t.example.com)
+  -e string
+        Tunnel engine: dnstt|slipstream (default "dnstt")
+  -k string
+        DNSTT public key (required when -e dnstt)
   -l int
         Starting local port for tunnel listeners (default 40000)
   -r string
@@ -103,6 +110,8 @@ Examples:
 
 ```bash
 f35 -r resolvers.txt \
+	-e dnstt \
+	-k YOUR_PUBLIC_KEY \
 	-d t.example.com \
 	-s 3000 \
 	-t 5 \
@@ -113,15 +122,15 @@ f35 -r resolvers.txt \
 ```
 
 ```bash
-f35 -r resolvers.txt -d t.example.com -w 100 -x http
+f35 -r resolvers.txt -e dnstt -k YOUR_PUBLIC_KEY -d t.example.com -w 100 -x socks5h
 
-f35 -r resolvers.txt -d t.example.com -w 100 -x socks5h
+f35 -r resolvers.txt -e dnstt -k YOUR_PUBLIC_KEY -d t.example.com -w 100 -x socks5h -s 1500
 
-f35 -r resolvers.txt -d t.example.com -w 100 -x socks5h -s 1500
+f35 -r resolvers.txt -e slipstream -d t.example.com -w 100 -x http
 
-f35 -r resolvers.txt -d t.example.com -w 100 -x socks5h -U user -P pass
+f35 -r resolvers.txt -e slipstream -d t.example.com -w 100 -x socks5h
 
-f35 -r resolvers.txt -d t.example.com -w 100 -x http -U user -P pass
+f35 -r resolvers.txt -e slipstream -d t.example.com -w 100 -x http -U user -P pass
 ```
 
 ---
@@ -140,16 +149,18 @@ Unhealthy resolvers produce no output.
 Pipe stdout directly into another tool or file:
 
 ```bash
-f35 -r resolvers.txt -d t.example.com | tee results.txt
+f35 -r resolvers.txt -e dnstt -k YOUR_PUBLIC_KEY -d t.example.com | tee results.txt
 ```
 
 ---
 
 ## Troubleshooting
 
-- `error: slipstream-client not found in PATH`:
-  install `slipstream-client` or add it to `PATH`.
+- `error: dnstt-client not found in PATH` or `error: slipstream-client not found in PATH`:
+  install the selected engine client or add it to `PATH`.
+- `error: -k is required when -e dnstt`:
+  pass the DNSTT public key with `-k`.
 - Empty output:
-  check domain, proxy mode (`-x`), auth (`-U/-P`), and try a larger wait time like `-s 2000`.
+  check domain, engine selection (`-e`), key (`-k` for DNSTT), proxy mode (`-x`), auth (`-U/-P`), and try a larger wait like `-s 2000`.
 - Very few results:
   lower concurrency (`-w`) or increase timeout (`-t`) and wait time (`-s`).
