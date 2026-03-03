@@ -6,6 +6,36 @@ It evaluates resolvers by actually establishing tunnels, sending traffic through
 
 ---
 
+## Quick Start
+
+1. Build:
+
+```bash
+CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o f35 .
+```
+
+2. Create `resolvers.txt`:
+
+```txt
+1.1.1.1
+8.8.8.8:53
+9.9.9.9
+```
+
+3. Run a basic scan:
+
+```bash
+f35 -r resolvers.txt -d t.example.com -x socks5h
+```
+
+4. Save results:
+
+```bash
+f35 -r resolvers.txt -d t.example.com -x socks5h | tee healthy.txt
+```
+
+---
+
 ## What F35 Does
 
 F35 takes a list of DNS resolvers (`IP` or `IP:PORT`), a tunnel domain pointing to a production **slipstream-server**, and a worker count.
@@ -40,7 +70,7 @@ One resolver per line:
 
 * **slipstream-client** must be installed and available in `$PATH`
 * A running and reachable **slipstream-server**
-* A valid tunnel domain (e.g. `ns.domain.tld`)
+* A valid tunnel domain (e.g. `t.example.com`)
 
 ---
 
@@ -52,7 +82,7 @@ One resolver per line:
   -U string
         Optional proxy username
   -d string
-        Tunnel domain (e.g. ns.domain.tld)
+        Tunnel domain (e.g. t.example.com)
   -l int
         Starting local port for tunnel listeners (default 40000)
   -r string
@@ -69,14 +99,29 @@ One resolver per line:
         Proxy protocol for listener: http|https|socks5|socks5h (default "http")
 ```
 
-Example:
+Examples:
 
 ```bash
-./f35 -r resolvers.txt -d ns.domain.tld -w 100 -x http
-./f35 -r resolvers.txt -d ns.domain.tld -w 100 -x socks5
-./f35 -r resolvers.txt -d ns.domain.tld -w 100 -x socks5h
-./f35 -r resolvers.txt -d ns.domain.tld -w 100 -x http -U user -P pass
-./f35 -r resolvers.txt -d ns.domain.tld -w 100 -x socks5 -s 1500
+f35 -r resolvers.txt \
+	-d t.example.com \
+	-s 3000 \
+	-t 5 \
+	-w 100 \
+	-x socks5h \
+	-U user -P pass \
+	-u https://speed.cloudflare.com/__down?bytes=100000
+```
+
+```bash
+f35 -r resolvers.txt -d t.example.com -w 100 -x http
+
+f35 -r resolvers.txt -d t.example.com -w 100 -x socks5h
+
+f35 -r resolvers.txt -d t.example.com -w 100 -x socks5h -s 1500
+
+f35 -r resolvers.txt -d t.example.com -w 100 -x socks5h -U user -P pass
+
+f35 -r resolvers.txt -d t.example.com -w 100 -x http -U user -P pass
 ```
 
 ---
@@ -95,5 +140,16 @@ Unhealthy resolvers produce no output.
 Pipe stdout directly into another tool or file:
 
 ```bash
-./f35 -r resolvers.txt -d ns.domain.tld | tee results.txt
+f35 -r resolvers.txt -d t.example.com | tee results.txt
 ```
+
+---
+
+## Troubleshooting
+
+- `error: slipstream-client not found in PATH`:
+  install `slipstream-client` or add it to `PATH`.
+- Empty output:
+  check domain, proxy mode (`-x`), auth (`-U/-P`), and try a larger wait time like `-s 2000`.
+- Very few results:
+  lower concurrency (`-w`) or increase timeout (`-t`) and wait time (`-s`).
