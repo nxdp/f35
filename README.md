@@ -8,15 +8,16 @@ It evaluates resolvers by actually establishing tunnels, sending traffic through
 
 ## What F35 Does
 
-F35 takes a list of DNS resolvers (`IP:PORT`), a tunnel domain pointing to a production **slipstream-server**, and a worker count.
+F35 takes a list of DNS resolvers (`IP` or `IP:PORT`), a tunnel domain pointing to a production **slipstream-server**, and a worker count.
 
 For each resolver, F35:
 
 1. Spawns a `slipstream-client` process bound to a local port.
-2. Sends an HTTP request immediately through the tunnel.
-3. If a response is received within the timeout, the resolver is **healthy** — its address and latency are printed to stdout.
-4. If the request times out or fails, the resolver is silently skipped.
-5. Kills the `slipstream-client` process and moves on.
+2. Waits for tunnel establishment (`-s`, milliseconds).
+3. Sends an HTTP request through the tunnel.
+4. If a response is received within the timeout, the resolver is **healthy** — its address and latency are printed to stdout.
+5. If the request times out or fails, the resolver is silently skipped.
+6. Kills the `slipstream-client` process and moves on.
 
 This makes F35 a **true end-to-end resolver scanner**, not a synthetic or partial test.
 
@@ -56,6 +57,8 @@ One resolver per line:
         Starting local port for tunnel listeners (default 40000)
   -r string
         Path to resolvers file
+  -s int
+        Milliseconds to wait for tunnel establishment before HTTP test (default 1000)
   -t int
         HTTP request timeout in seconds (default 5)
   -u string
@@ -73,6 +76,7 @@ Example:
 ./f35 -r resolvers.txt -d ns.domain.tld -w 100 -x socks5
 ./f35 -r resolvers.txt -d ns.domain.tld -w 100 -x socks5h
 ./f35 -r resolvers.txt -d ns.domain.tld -w 100 -x http -U user -P pass
+./f35 -r resolvers.txt -d ns.domain.tld -w 100 -x socks5 -s 1500
 ```
 
 ---

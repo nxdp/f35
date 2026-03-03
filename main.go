@@ -25,6 +25,7 @@ type Config struct {
 	ProxyPass     string
 	Workers       int
 	TestURL       string
+	TunnelWait    int
 	Timeout       int
 	StartPort     int
 	ClientPath    string
@@ -39,6 +40,7 @@ func main() {
 	flag.StringVar(&cfg.ProxyPass, "P", "", "Optional proxy password")
 	flag.IntVar(&cfg.Workers, "w", 20, "Concurrent workers")
 	flag.StringVar(&cfg.TestURL, "u", "http://www.google.com/gen_204", "HTTP URL to test through tunnel")
+	flag.IntVar(&cfg.TunnelWait, "s", 1000, "Milliseconds to wait for tunnel establishment before HTTP test")
 	flag.IntVar(&cfg.Timeout, "t", 5, "HTTP request timeout in seconds")
 	flag.IntVar(&cfg.StartPort, "l", 40000, "Starting local port for tunnel listeners")
 	flag.Parse()
@@ -184,7 +186,7 @@ func tryResolver(resolver string, localPort int, cfg *Config, client *http.Clien
 		_ = cmd.Wait()
 	}()
 
-	time.Sleep(1 * time.Second)
+	time.Sleep(time.Duration(cfg.TunnelWait) * time.Millisecond)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.Timeout)*time.Second)
 	defer cancel()
