@@ -26,6 +26,7 @@ type Config struct {
 	ProxyPass     string
 	PubKey        string
 	Workers       int
+	Retries       int
 	TestURL       string
 	TunnelWait    int
 	Timeout       int
@@ -43,6 +44,7 @@ func main() {
 	flag.StringVar(&cfg.ProxyUser, "U", "", "Optional proxy username")
 	flag.StringVar(&cfg.ProxyPass, "P", "", "Optional proxy password")
 	flag.IntVar(&cfg.Workers, "w", 20, "Concurrent workers")
+	flag.IntVar(&cfg.Retries, "R", 0, "Retries per resolver after first failed attempt")
 	flag.StringVar(&cfg.TestURL, "u", "http://www.google.com/gen_204", "HTTP URL to test through tunnel")
 	flag.IntVar(&cfg.TunnelWait, "s", 1000, "Milliseconds to wait for tunnel establishment before HTTP test")
 	flag.IntVar(&cfg.Timeout, "t", 5, "HTTP request timeout in seconds")
@@ -77,6 +79,10 @@ func main() {
 	}
 	if cfg.Workers < 1 {
 		fmt.Fprintf(os.Stderr, "error: -w must be >= 1\n")
+		os.Exit(1)
+	}
+	if cfg.Retries < 0 {
+		fmt.Fprintf(os.Stderr, "error: -R must be >= 0\n")
 		os.Exit(1)
 	}
 	if cfg.Timeout < 1 {
@@ -199,11 +205,15 @@ func scan(localPort int, cfg *Config, jobs <-chan string) {
 	}
 
 	for resolver := range jobs {
-		tryResolver(resolver, localPort, cfg, client)
+		for attempt := 0; attempt <= cfg.Retries; attempt++ {
+			if tryResolver(resolver, localPort, cfg, client) {
+				break
+			}
+		}
 	}
 }
 
-func tryResolver(resolver string, localPort int, cfg *Config, client *http.Client) {
+func tryResolver(resolver string, localPort int, cfg *Config, client *http.Client) bool {
 	cmd := &exec.Cmd{}
 	if cfg.Engine == "dnstt" {
 		cmd = exec.Command(cfg.ClientPath,
@@ -225,7 +235,7 @@ func tryResolver(resolver string, localPort int, cfg *Config, client *http.Clien
 	cmd.Stderr = io.Discard
 
 	if err := cmd.Start(); err != nil {
-		return
+		return false
 	}
 	defer func() {
 		_ = cmd.Process.Kill()
@@ -239,7 +249,7 @@ func tryResolver(resolver string, localPort int, cfg *Config, client *http.Clien
 
 	req, err := http.NewRequestWithContext(ctx, "GET", cfg.TestURL, nil)
 	if err != nil {
-		return
+		return false
 	}
 	req.Header.Set("Connection", "close")
 	req.Header.Set("Cache-Control", "no-cache")
@@ -247,11 +257,13 @@ func tryResolver(resolver string, localPort int, cfg *Config, client *http.Clien
 	start := time.Now()
 	resp, err := client.Do(req)
 	if err != nil {
-		return
+		return false
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 200 {
 		fmt.Printf("%s %dms\n", resolver, time.Since(start).Milliseconds())
+		return true
 	}
+	return false
 }

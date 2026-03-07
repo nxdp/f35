@@ -94,6 +94,8 @@ One resolver per line:
         Starting local port for tunnel listeners (default 40000)
   -r string
         Path to resolvers file
+  -R int
+        Retries per resolver after first failed attempt (default 0)
   -s int
         Milliseconds to wait for tunnel establishment before HTTP test (default 1000)
   -t int
@@ -131,6 +133,8 @@ f35 -r resolvers.txt -e slipstream -d t.example.com -w 100 -x http
 f35 -r resolvers.txt -e slipstream -d t.example.com -w 100 -x socks5h
 
 f35 -r resolvers.txt -e slipstream -d t.example.com -w 100 -x http -U user -P pass
+
+f35 -r resolvers.txt -e dnstt -k YOUR_PUBLIC_KEY -d t.example.com -w 100 -x socks5h -R 2
 ```
 
 ---
@@ -163,4 +167,4 @@ f35 -r resolvers.txt -e dnstt -k YOUR_PUBLIC_KEY -d t.example.com | tee results.
 - Empty output:
   check domain, engine selection (`-e`), key (`-k` for DNSTT), proxy mode (`-x`), auth (`-U/-P`), and try a larger wait like `-s 2000`.
 - Very few results:
-  lower concurrency (`-w`) or increase timeout (`-t`) and wait time (`-s`).
+  lower concurrency (`-w`) or increase timeout (`-t`), wait time (`-s`), or retries (`-R`).
