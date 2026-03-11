@@ -88,13 +88,13 @@ One resolver per line:
 
 ```
   -P string
-        Optional proxy password
+        Proxy password (if the tunnel exit requires auth)
   -U string
-        Optional proxy username
+        Proxy username (if the tunnel exit requires auth)
   -d string
         Tunnel domain (e.g. t.example.com)
   -e string
-        Tunnel engine: dnstt|slipstream (default "dnstt")
+        Tunnel engine to use: dnstt|slipstream (default "dnstt")
   -k string
         DNSTT public key (required when -e dnstt)
   -l int
@@ -102,19 +102,19 @@ One resolver per line:
   -p string
         Explicit path to client binary (optional)
   -r string
-        Path to resolvers file
+        Path to file containing resolvers (IP or IP:PORT per line)
   -R int
-        Retries per resolver after first failed attempt (default 0)
+        Number of retries per resolver after the first failure (default 0)
   -s int
-        Milliseconds to wait for tunnel establishment before HTTP test (default 1000)
+        Time to wait (ms) for tunnel establishment before testing HTTP (default 1000)
   -t int
         HTTP request timeout in seconds (default 5)
   -u string
-        HTTP URL to test through tunnel (default "http://www.google.com/gen_204")
+        HTTP URL to test through the tunnel (default "http://www.google.com/gen_204")
   -w int
-        Concurrent workers (default 20)
+        Number of concurrent scanning workers (default 20)
   -x string
-        Proxy protocol for listener: http|https|socks5|socks5h (default "http")
+        Protocol to use when sending request through the tunnel: http|https|socks5|socks5h (default "http")
 ```
 
 Examples:
