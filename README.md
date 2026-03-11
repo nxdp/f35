@@ -34,6 +34,12 @@ f35 -r resolvers.txt -e dnstt -k YOUR_PUBLIC_KEY -d t.example.com -x socks5h
 f35 -r resolvers.txt -e dnstt -k YOUR_PUBLIC_KEY -d t.example.com -x socks5h | tee healthy.txt
 ```
 
+Windows example (no PATH change needed):
+
+```bash
+f35.exe -r resolvers.txt -e dnstt -k YOUR_PUBLIC_KEY -d t.example.com -x socks5h -p .\\dnstt-client.exe
+```
+
 ---
 
 ## What F35 Does
