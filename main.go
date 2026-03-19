@@ -30,6 +30,7 @@ type Config struct {
 	ProxyPass     string
 	Args          string
 	ParsedArgs    []string
+	Colorize      bool
 	Workers       int
 	Retries       int
 	TunnelWait    int
@@ -135,6 +136,7 @@ func parseFlags() *Config {
 
 	c.Engine = strings.ToLower(strings.TrimSpace(c.Engine))
 	c.Proxy = strings.ToLower(strings.TrimSpace(c.Proxy))
+	c.Colorize = stdoutIsTerminal()
 	return c
 }
 
@@ -308,8 +310,33 @@ func try(resolver string, port int, cfg *Config, client *http.Client) bool {
 	}
 	defer resp.Body.Close()
 
-	fmt.Printf("%s %dms\n", resolver, time.Since(start).Milliseconds())
+	latency := time.Since(start).Milliseconds()
+	fmt.Printf("%s %s\n", resolver, formatLatency(latency, cfg.Colorize))
 	return true
+}
+
+func formatLatency(latencyMs int64, colorize bool) string {
+	latency := fmt.Sprintf("%dms", latencyMs)
+	if !colorize {
+		return latency
+	}
+
+	switch {
+	case latencyMs <= 2000:
+		return "\033[32m" + latency + "\033[0m"
+	case latencyMs <= 6000:
+		return "\033[33m" + latency + "\033[0m"
+	default:
+		return "\033[31m" + latency + "\033[0m"
+	}
+}
+
+func stdoutIsTerminal() bool {
+	info, err := os.Stdout.Stat()
+	if err != nil {
+		return false
+	}
+	return (info.Mode() & os.ModeCharDevice) != 0
 }
 
 func buildEngineArgs(cfg *Config, resolver string, port int) ([]string, error) {
