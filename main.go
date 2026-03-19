@@ -123,7 +123,7 @@ func parseFlags() *Config {
 	flag.StringVar(&c.Domain, "d", "", "Tunnel domain (e.g., ns.example.com)")
 	flag.StringVar(&c.Args, "a", "", "Extra engine CLI args; supports placeholders like {resolver}, {domain}, {listen}")
 	flag.StringVar(&c.TestURL, "u", "http://www.google.com/gen_204", "HTTP URL to test through the tunnel")
-	flag.StringVar(&c.Proxy, "x", "http", "Protocol to use when sending request through the tunnel: http|https|socks5|socks5h")
+	flag.StringVar(&c.Proxy, "x", "socks5h", "Protocol to use when sending request through the tunnel: http|https|socks5|socks5h")
 	flag.StringVar(&c.ProxyUser, "U", "", "Proxy username (if the tunnel exit requires auth)")
 	flag.StringVar(&c.ProxyPass, "P", "", "Proxy password (if the tunnel exit requires auth)")
 	flag.IntVar(&c.Workers, "w", 20, "Number of concurrent scanning workers")
