@@ -29,6 +29,7 @@ type Config struct {
 	ProxyUser     string
 	ProxyPass     string
 	Args          string
+	ParsedArgs    []string
 	Workers       int
 	Retries       int
 	TunnelWait    int
@@ -148,9 +149,11 @@ func validateConfig(cfg *Config) error {
 	}
 
 	if cfg.Args != "" {
-		if _, err := splitCommandLine(cfg.Args); err != nil {
+		parsedArgs, err := splitCommandLine(cfg.Args)
+		if err != nil {
 			return fmt.Errorf("invalid -a: %w", err)
 		}
+		cfg.ParsedArgs = parsedArgs
 	}
 
 	switch cfg.Proxy {
@@ -312,14 +315,7 @@ func try(resolver string, port int, cfg *Config, client *http.Client) bool {
 func buildEngineArgs(cfg *Config, resolver string, port int) ([]string, error) {
 	spec := engineSpecs[cfg.Engine]
 	listenAddr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
-	extraArgs := []string{}
-	if cfg.Args != "" {
-		var err error
-		extraArgs, err = splitCommandLine(cfg.Args)
-		if err != nil {
-			return nil, err
-		}
-	}
+	extraArgs := cfg.ParsedArgs
 
 	args := make([]string, 0, len(spec.DefaultArgs)+8)
 	if spec.InsertArgsBeforeTail {
