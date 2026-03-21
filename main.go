@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -25,6 +26,8 @@ type Config struct {
 	Domain        string
 	ResolversFile string
 	TestURL       string
+	JSON          bool
+	Whois         bool
 	Proxy         string
 	ProxyUser     string
 	ProxyPass     string
@@ -72,6 +75,21 @@ var engineSpecs = map[string]EngineSpec{
 			"-udp", "{resolver}",
 		},
 	},
+}
+
+const whoisURL = "https://api.ipiz.net"
+
+type whoisResponse struct {
+	OrgName string `json:"org_name"`
+	Country string `json:"country"`
+	Status  string `json:"status"`
+}
+
+type Result struct {
+	Resolver  string `json:"resolver"`
+	LatencyMS int64  `json:"latency_ms"`
+	Org       string `json:"org,omitempty"`
+	Country   string `json:"country,omitempty"`
 }
 
 func main() {
@@ -122,7 +140,9 @@ func parseFlags() *Config {
 	flag.StringVar(&c.ClientPath, "p", "", "Explicit path to client binary (optional)")
 	flag.StringVar(&c.Domain, "d", "", "Tunnel domain (e.g., ns.example.com)")
 	flag.StringVar(&c.Args, "a", "", "Extra engine CLI args; supports placeholders like {resolver}, {domain}, {listen}")
+	flag.BoolVar(&c.JSON, "json", false, "Print one JSON object per result line")
 	flag.StringVar(&c.TestURL, "u", "http://www.google.com/gen_204", "HTTP URL to test through the tunnel")
+	flag.BoolVar(&c.Whois, "whois", false, "Lookup resolver owner info and print organization and country")
 	flag.StringVar(&c.Proxy, "x", "socks5h", "Protocol to use when sending request through the tunnel: http|https|socks5|socks5h")
 	flag.StringVar(&c.ProxyUser, "U", "", "Proxy username (if the tunnel exit requires auth)")
 	flag.StringVar(&c.ProxyPass, "P", "", "Proxy password (if the tunnel exit requires auth)")
@@ -136,7 +156,7 @@ func parseFlags() *Config {
 
 	c.Engine = strings.ToLower(strings.TrimSpace(c.Engine))
 	c.Proxy = strings.ToLower(strings.TrimSpace(c.Proxy))
-	c.Colorize = stdoutIsTerminal()
+	c.Colorize = !c.JSON && stdoutIsTerminal()
 	return c
 }
 
@@ -311,8 +331,33 @@ func try(resolver string, port int, cfg *Config, client *http.Client) bool {
 	defer resp.Body.Close()
 
 	latency := time.Since(start).Milliseconds()
-	fmt.Printf("%s %s\n", resolver, formatLatency(latency, cfg.Colorize))
+	result := Result{
+		Resolver:  resolver,
+		LatencyMS: latency,
+	}
+	if !cfg.Whois {
+		printResult(cfg, result)
+		return true
+	}
+
+	org, country := lookupResolverInfo(client, resolver, cfg.Timeout)
+	result.Org = org
+	result.Country = country
+	printResult(cfg, result)
 	return true
+}
+
+func printResult(cfg *Config, result Result) {
+	if cfg.JSON {
+		_ = json.NewEncoder(os.Stdout).Encode(result)
+		return
+	}
+
+	if result.Org != "" || result.Country != "" {
+		fmt.Printf("%s %s %s %s\n", result.Resolver, formatLatency(result.LatencyMS, cfg.Colorize), result.Org, result.Country)
+		return
+	}
+	fmt.Printf("%s %s\n", result.Resolver, formatLatency(result.LatencyMS, cfg.Colorize))
 }
 
 func formatLatency(latencyMs int64, colorize bool) string {
@@ -337,6 +382,48 @@ func stdoutIsTerminal() bool {
 		return false
 	}
 	return (info.Mode() & os.ModeCharDevice) != 0
+}
+
+func lookupResolverInfo(client *http.Client, resolver string, timeoutSeconds int) (string, string) {
+	host, _, err := net.SplitHostPort(resolver)
+	if err != nil {
+		return "unknown", "unknown"
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", whoisURL+"/"+host, nil)
+	if err != nil {
+		return "unknown", "unknown"
+	}
+	req.Header.Set("Connection", "close")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "unknown", "unknown"
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "unknown", "unknown"
+	}
+
+	var data whoisResponse
+	if err := json.Unmarshal(body, &data); err != nil || strings.TrimSpace(data.Status) != "ok" {
+		return "unknown", "unknown"
+	}
+
+	org := strings.TrimSpace(data.OrgName)
+	if org == "" {
+		org = "unknown"
+	}
+	country := strings.TrimSpace(data.Country)
+	if country == "" {
+		country = "unknown"
+	}
+	return org, country
 }
 
 func buildEngineArgs(cfg *Config, resolver string, port int) ([]string, error) {
