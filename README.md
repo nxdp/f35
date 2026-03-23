@@ -45,31 +45,7 @@ You need all of these:
 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o f35 .
 ```
 
-## Quick Mental Model
-
-F35 has two kinds of flags:
-
-- scanner flags: how F35 scans
-- client flags: how your tunnel client should run
-
-Scanner flags are things like:
-
-- `-r` resolver file
-- `-e` engine
-- `-d` domain
-- `-u` test URL
-- `-w` workers
-- `-s` warm-up wait before test
-- `-t` HTTP timeout
-- `-R` retries
-- `-l` starting local port
-- `-x` proxy protocol used for the request through the tunnel
-- `-U` proxy username
-- `-P` proxy password
-
-Client flags go inside `-a`.
-
-## Important Flags
+## Flags
 
 - `-r`
   file that contains resolver IPs
