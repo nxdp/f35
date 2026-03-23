@@ -74,8 +74,9 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o f35 .
   how long to wait before the HTTP test, in milliseconds
   this is important because the tunnel may need time to become usable
 - `-t`
+  HTTP request timeout in seconds
 - `-R`
-  retry count for each resolver
+  number of retries for each resolver after the first failed attempt
 - `-l`
   starting local port for local tunnel listeners
   useful if you want to avoid port collisions or run multiple scans
@@ -83,7 +84,6 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o f35 .
   full path to the tunnel client binary if it is not in `PATH`
 - `-whois`
   after a resolver works, also print resolver organization and country
-  HTTP request timeout in seconds
 - `-whois-timeout`
   timeout in seconds for the whois lookup
   default is `15`
