@@ -57,15 +57,19 @@ Scanner flags are things like:
 - `-r` resolver file
 - `-e` engine
 - `-d` domain
+- `-u` test URL
 - `-w` workers
 - `-s` warm-up wait before test
 - `-t` HTTP timeout
 - `-R` retries
+- `-l` starting local port
 - `-x` proxy protocol used for the request through the tunnel
+- `-U` proxy username
+- `-P` proxy password
 
 Client flags go inside `-a`.
 
-## Important Flags In Simple Words
+## Important Flags
 
 - `-r`
   file that contains resolver IPs
@@ -80,6 +84,14 @@ Client flags go inside `-a`.
   this must match what your tunnel path or server-side target expects
   wrong `-x` can make healthy resolvers look dead
   default is `socks5h`
+- `-U`
+  proxy username if the tunnel exit requires authentication
+- `-P`
+  proxy password if the tunnel exit requires authentication
+  `-P` requires `-U`
+- `-u`
+  test URL used for the real HTTP request through the tunnel
+  default is `http://www.google.com/gen_204`
 - `-w`
   how many resolvers to test at the same time
 - `-s`
@@ -89,6 +101,9 @@ Client flags go inside `-a`.
   HTTP request timeout in seconds
 - `-R`
   retry count for each resolver
+- `-l`
+  starting local port for local tunnel listeners
+  useful if you want to avoid port collisions or run multiple scans
 - `-p`
   full path to the tunnel client binary if it is not in `PATH`
 - `-whois`
@@ -161,6 +176,22 @@ f35 -r resolvers.txt \
   -d t.example.com \
   -x socks5h
 ```
+
+### Proxy Auth With `-U` And `-P`
+
+Use this if the proxy exposed by your tunnel requires a username and password:
+
+```bash
+f35 -r resolvers.txt \
+  -e dnstt \
+  -d t.example.com \
+  -x socks5h \
+  -U myuser \
+  -P mypass \
+  -a '-pubkey YOUR_PUBLIC_KEY'
+```
+
+`-P` only works together with `-U`.
 
 ### Save Only Healthy Resolvers
 
@@ -303,6 +334,10 @@ Try this:
 ```bash
 -s 2000 -t 8 -R 1
 ```
+
+### `-P requires -U`
+
+If you set a proxy password, you must also set a proxy username.
 
 ### Very Few Working Resolvers
 
