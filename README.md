@@ -66,7 +66,7 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o f35 .
   proxy password if the tunnel exit requires authentication
   `-P` requires `-U`
 - `-u`
-  test URL used for the real HTTP request through the tunnel
+  test URL used for the probe request through the tunnel
   default is `http://www.google.com/gen_204`
 - `-w`
   how many resolvers to test at the same time
@@ -74,7 +74,18 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o f35 .
   how long to wait before the HTTP test, in milliseconds
   this is important because the tunnel may need time to become usable
 - `-t`
-  HTTP request timeout in seconds
+  probe request timeout in seconds
+- `-probe`
+  run a quick connectivity probe through the tunnel
+- `-download`
+  run a real download test through the tunnel
+  enabled by default
+- `-download-url`
+  HTTP URL used for the download test
+  default is `https://speed.cloudflare.com/__down?bytes=100000`
+- `-download-timeout`
+  timeout in seconds for the download test
+  default is `5`
 - `-R`
   number of retries for each resolver after the first failed attempt
 - `-l`
@@ -83,12 +94,34 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o f35 .
 - `-p`
   full path to the tunnel client binary if it is not in `PATH`
 - `-whois`
-  after a resolver works, also print resolver organization and country
+  run a whois lookup for resolver organization and country
 - `-whois-timeout`
   timeout in seconds for the whois lookup
   default is `15`
 - `-json`
   print one JSON object per result line instead of plain text
+- `-q`
+  suppress startup and completion logs
+
+## Timeout Tuning
+
+Use these as the main knobs:
+
+- `-s`
+  wait longer here if the tunnel starts too slowly
+- `-t`
+  raise this if the quick probe is timing out
+- `-download-timeout`
+  raise this if the download test starts but does not finish in time
+- `-whois-timeout`
+  raise this if the whois lookup is too slow
+
+Good starting values:
+
+- slow tunnel startup: increase `-s`
+- weak or filtered path: increase `-download-timeout`
+- slow whois API: increase `-whois-timeout`
+- only probe fails: increase `-t`
 
 ## How `-a` Works
 
@@ -205,7 +238,7 @@ Meaning:
 f35 -r resolvers.txt -e vaydns -d t.example.com -x socks5h -whois -a '-pubkey YOUR_PUBLIC_KEY'
 ```
 
-This keeps the normal health test, and if a resolver works, it also prints org and country for that resolver IP.
+This keeps the enabled checks independent, and if the whois lookup succeeds, it also prints org and country for that resolver IP.
 
 This is most useful when the resolver IP itself belongs to the network you care about.
 If your tunnel goes into a more advanced upstream chain, this extra lookup can be less meaningful.
@@ -233,13 +266,17 @@ It is only checking whether the tunnel path can move a request and return any re
 
 That means:
 
-- the first request is still enough to decide healthy or dead
+- the download request is the strongest signal
+- whois and probe are weaker checks
 - F35 does not require HTTP `200`
 - even `400` or `404` can still prove that the tunnel is working
 - `-whois` may be less useful in those advanced chains
 - wrong `-x` can ruin scan results
 
 ## Output
+
+By default, scan status is printed to `stderr` with a short `scan started` and `scan finished` line.
+Use `-q` to silence those logs and keep only result lines on `stdout`.
 
 ### Normal Output
 
@@ -248,9 +285,9 @@ That means:
 5.6.7.8:53 89ms
 ```
 
-Only healthy resolvers are printed.
+Only usable resolvers are printed.
 
-A resolver is considered healthy if the first request really moves through the tunnel and any response comes back.
+A resolver is considered usable if at least one enabled check succeeds. By default, download is the primary signal.
 F35 does not require HTTP `200`.
 Even a `400` or `404` can still prove that the tunnel is working.
 
@@ -262,20 +299,20 @@ Latency is colored on terminal output:
 
 If you pipe the output to a file or another command, colors are not printed.
 
-### Output With `-whois`
+### Output With Checks
 
 ```txt
-1.2.3.4:53 342ms org="Iran Information Technology Company PJSC" country="Iran"
-5.6.7.8:53 2140ms org="unknown" country="unknown"
+1.2.3.4:53 342ms [download] [whois] org="Iran Information Technology Company PJSC" country="Iran"
+5.6.7.8:53 2140ms [probe]
 ```
 
-The `-whois` fields are labeled and quoted so organization names with spaces stay readable and unambiguous.
+The output stays `IP:PORT LATENCY`, and the tags show which checks passed.
 
 ### Output With `-json`
 
 ```json
-{"resolver":"1.2.3.4:53","latency_ms":342}
-{"resolver":"5.6.7.8:53","latency_ms":2140,"org":"Iran Information Technology Company PJSC","country":"Iran"}
+{"resolver":"1.2.3.4:53","latency_ms":342,"probe":false,"whois":true,"download":true,"org":"Iran Information Technology Company PJSC","country":"Iran"}
+{"resolver":"5.6.7.8:53","latency_ms":2140,"probe":true,"whois":false,"download":false}
 ```
 
 ## Good Defaults For New Users

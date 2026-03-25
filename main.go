@@ -17,29 +17,35 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 type Config struct {
-	Engine        string
-	ClientPath    string
-	Domain        string
-	ResolversFile string
-	TestURL       string
-	JSON          bool
-	Whois         bool
-	Proxy         string
-	ProxyUser     string
-	ProxyPass     string
-	Args          string
-	ParsedArgs    []string
-	Colorize      bool
-	Workers       int
-	Retries       int
-	TunnelWait    int
-	Timeout       int
-	WhoisTimeout  int
-	StartPort     int
+	Engine          string
+	ClientPath      string
+	Domain          string
+	ResolversFile   string
+	TestURL         string
+	DownloadURL     string
+	JSON            bool
+	Quiet           bool
+	Probe           bool
+	Download        bool
+	Whois           bool
+	Proxy           string
+	ProxyUser       string
+	ProxyPass       string
+	Args            string
+	ParsedArgs      []string
+	Colorize        bool
+	Workers         int
+	Retries         int
+	TunnelWait      int
+	Timeout         int
+	DownloadTimeout int
+	WhoisTimeout    int
+	StartPort       int
 }
 
 type EngineSpec struct {
@@ -89,6 +95,9 @@ type whoisResponse struct {
 type Result struct {
 	Resolver  string `json:"resolver"`
 	LatencyMS int64  `json:"latency_ms"`
+	Probe     bool   `json:"probe"`
+	Whois     bool   `json:"whois"`
+	Download  bool   `json:"download"`
 	Org       string `json:"org,omitempty"`
 	Country   string `json:"country,omitempty"`
 }
@@ -113,14 +122,19 @@ func run() error {
 		return err
 	}
 
+	if !cfg.Quiet {
+		fmt.Fprintf(os.Stderr, "scan started: resolvers=%d workers=%d engine=%s\n", len(resolvers), cfg.Workers, cfg.Engine)
+	}
+
 	jobs := make(chan string, cfg.Workers*2)
 	var wg sync.WaitGroup
+	var working atomic.Int64
 
 	for i := 0; i < cfg.Workers; i++ {
 		wg.Add(1)
 		go func(port int) {
 			defer wg.Done()
-			worker(port, cfg, jobs)
+			worker(port, cfg, jobs, &working)
 		}(cfg.StartPort + i)
 	}
 
@@ -130,6 +144,9 @@ func run() error {
 	close(jobs)
 
 	wg.Wait()
+	if !cfg.Quiet {
+		fmt.Fprintf(os.Stderr, "scan finished: %d working resolvers\n", working.Load())
+	}
 	return nil
 }
 
@@ -142,7 +159,11 @@ func parseFlags() *Config {
 	flag.StringVar(&c.Domain, "d", "", "Tunnel domain (e.g., ns.example.com)")
 	flag.StringVar(&c.Args, "a", "", "Extra engine CLI args; supports placeholders like {resolver}, {domain}, {listen}")
 	flag.BoolVar(&c.JSON, "json", false, "Print one JSON object per result line")
-	flag.StringVar(&c.TestURL, "u", "http://www.google.com/gen_204", "HTTP URL to test through the tunnel")
+	flag.BoolVar(&c.Quiet, "q", false, "Suppress startup and completion logs")
+	flag.StringVar(&c.TestURL, "u", "http://www.google.com/gen_204", "HTTP URL used for the probe request through the tunnel")
+	flag.BoolVar(&c.Probe, "probe", false, "Run a quick connectivity probe through the tunnel")
+	flag.BoolVar(&c.Download, "download", true, "Run a real download test through the tunnel")
+	flag.StringVar(&c.DownloadURL, "download-url", "https://speed.cloudflare.com/__down?bytes=100000", "HTTP URL used for the download test")
 	flag.BoolVar(&c.Whois, "whois", false, "Lookup resolver owner info and print organization and country")
 	flag.StringVar(&c.Proxy, "x", "socks5h", "Protocol to use when sending request through the tunnel: http|https|socks5|socks5h")
 	flag.StringVar(&c.ProxyUser, "U", "", "Proxy username (if the tunnel exit requires auth)")
@@ -150,7 +171,8 @@ func parseFlags() *Config {
 	flag.IntVar(&c.Workers, "w", 20, "Number of concurrent scanning workers")
 	flag.IntVar(&c.Retries, "R", 0, "Number of retries per resolver after the first failure")
 	flag.IntVar(&c.TunnelWait, "s", 1000, "Time to wait (ms) for tunnel establishment before testing HTTP")
-	flag.IntVar(&c.Timeout, "t", 5, "HTTP request timeout in seconds")
+	flag.IntVar(&c.Timeout, "t", 5, "Probe request timeout in seconds")
+	flag.IntVar(&c.DownloadTimeout, "download-timeout", 5, "Download request timeout in seconds")
 	flag.IntVar(&c.WhoisTimeout, "whois-timeout", 15, "WHOIS lookup timeout in seconds")
 	flag.IntVar(&c.StartPort, "l", 40000, "Starting local port for tunnel listeners")
 
@@ -189,6 +211,9 @@ func validateConfig(cfg *Config) error {
 	if cfg.ProxyPass != "" && cfg.ProxyUser == "" {
 		return errors.New("-P requires -U")
 	}
+	if !cfg.Probe && !cfg.Download && !cfg.Whois {
+		return errors.New("at least one of -probe, -download, or -whois must be enabled")
+	}
 
 	if cfg.Workers < 1 {
 		return errors.New("-w must be >= 1")
@@ -198,6 +223,9 @@ func validateConfig(cfg *Config) error {
 	}
 	if cfg.Timeout < 1 {
 		return errors.New("-t must be >= 1")
+	}
+	if cfg.DownloadTimeout < 1 {
+		return errors.New("--download-timeout must be >= 1")
 	}
 	if cfg.WhoisTimeout < 1 {
 		return errors.New("--whois-timeout must be >= 1")
@@ -269,7 +297,7 @@ func formatAddr(line string) (string, bool) {
 	return net.JoinHostPort(host, port), true
 }
 
-func worker(port int, cfg *Config, jobs <-chan string) {
+func worker(port int, cfg *Config, jobs <-chan string, working *atomic.Int64) {
 	proxyURL := &url.URL{
 		Scheme: cfg.Proxy,
 		Host:   net.JoinHostPort("127.0.0.1", strconv.Itoa(port)),
@@ -293,6 +321,7 @@ func worker(port int, cfg *Config, jobs <-chan string) {
 	for resolver := range jobs {
 		for i := 0; i <= cfg.Retries; i++ {
 			if try(resolver, port, cfg, client) {
+				working.Add(1)
 				break
 			}
 		}
@@ -319,35 +348,48 @@ func try(resolver string, port int, cfg *Config, client *http.Client) bool {
 
 	time.Sleep(time.Duration(cfg.TunnelWait) * time.Millisecond)
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.Timeout)*time.Second)
-	defer cancel()
+	var result Result
+	result.Resolver = resolver
 
-	req, err := http.NewRequestWithContext(ctx, "GET", cfg.TestURL, nil)
-	if err != nil {
+	bestPriority := 0
+
+	if cfg.Download {
+		latency, ok := doHTTPCheck(client, cfg.DownloadURL, cfg.DownloadTimeout, true)
+		if ok {
+			result.Download = true
+			result.LatencyMS = latency
+			bestPriority = 3
+		}
+	}
+
+	if cfg.Whois {
+		latency, org, country, ok := lookupResolverInfo(client, resolver, cfg.WhoisTimeout)
+		if ok {
+			result.Whois = true
+			result.Org = org
+			result.Country = country
+			if bestPriority < 2 {
+				result.LatencyMS = latency
+				bestPriority = 2
+			}
+		}
+	}
+
+	if cfg.Probe {
+		latency, ok := doHTTPCheck(client, cfg.TestURL, cfg.Timeout, false)
+		if ok {
+			result.Probe = true
+			if bestPriority < 1 {
+				result.LatencyMS = latency
+				bestPriority = 1
+			}
+		}
+	}
+
+	if bestPriority == 0 {
 		return false
 	}
-	req.Header.Set("Connection", "close")
 
-	start := time.Now()
-	resp, err := client.Do(req)
-	if err != nil {
-		return false
-	}
-	defer resp.Body.Close()
-
-	latency := time.Since(start).Milliseconds()
-	result := Result{
-		Resolver:  resolver,
-		LatencyMS: latency,
-	}
-	if !cfg.Whois {
-		printResult(cfg, result)
-		return true
-	}
-
-	org, country := lookupResolverInfo(client, resolver, cfg.WhoisTimeout)
-	result.Org = org
-	result.Country = country
 	printResult(cfg, result)
 	return true
 }
@@ -358,11 +400,7 @@ func printResult(cfg *Config, result Result) {
 		return
 	}
 
-	if result.Org != "" || result.Country != "" {
-		fmt.Println(formatPlainTextResult(result, cfg.Colorize, true))
-		return
-	}
-	fmt.Println(formatPlainTextResult(result, cfg.Colorize, false))
+	fmt.Println(formatPlainTextResult(result, cfg.Colorize))
 }
 
 func formatLatency(latencyMs int64, colorize bool) string {
@@ -381,13 +419,18 @@ func formatLatency(latencyMs int64, colorize bool) string {
 	}
 }
 
-func formatPlainTextResult(result Result, colorize bool, withWhois bool) string {
+func formatPlainTextResult(result Result, colorize bool) string {
 	line := fmt.Sprintf("%s %s", result.Resolver, formatLatency(result.LatencyMS, colorize))
-	if !withWhois {
-		return line
-	}
-
 	parts := []string{line}
+	if result.Download {
+		parts = append(parts, "[download]")
+	}
+	if result.Whois {
+		parts = append(parts, "[whois]")
+	}
+	if result.Probe {
+		parts = append(parts, "[probe]")
+	}
 	if result.Org != "" {
 		parts = append(parts, "org="+strconv.Quote(result.Org))
 	}
@@ -405,10 +448,36 @@ func stdoutIsTerminal() bool {
 	return (info.Mode() & os.ModeCharDevice) != 0
 }
 
-func lookupResolverInfo(client *http.Client, resolver string, timeoutSeconds int) (string, string) {
+func doHTTPCheck(client *http.Client, targetURL string, timeoutSeconds int, drainBody bool) (int64, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", targetURL, nil)
+	if err != nil {
+		return 0, false
+	}
+	req.Header.Set("Connection", "close")
+
+	start := time.Now()
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, false
+	}
+	defer resp.Body.Close()
+
+	if drainBody {
+		if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+			return 0, false
+		}
+	}
+
+	return time.Since(start).Milliseconds(), true
+}
+
+func lookupResolverInfo(client *http.Client, resolver string, timeoutSeconds int) (int64, string, string, bool) {
 	host, _, err := net.SplitHostPort(resolver)
 	if err != nil {
-		return "unknown", "unknown"
+		return 0, "unknown", "unknown", false
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
@@ -416,24 +485,25 @@ func lookupResolverInfo(client *http.Client, resolver string, timeoutSeconds int
 
 	req, err := http.NewRequestWithContext(ctx, "GET", whoisURL+"/"+host, nil)
 	if err != nil {
-		return "unknown", "unknown"
+		return 0, "unknown", "unknown", false
 	}
 	req.Header.Set("Connection", "close")
 
+	start := time.Now()
 	resp, err := client.Do(req)
 	if err != nil {
-		return "unknown", "unknown"
+		return 0, "unknown", "unknown", false
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "unknown", "unknown"
+		return 0, "unknown", "unknown", false
 	}
 
 	var data whoisResponse
 	if err := json.Unmarshal(body, &data); err != nil || strings.TrimSpace(data.Status) != "ok" {
-		return "unknown", "unknown"
+		return 0, "unknown", "unknown", false
 	}
 
 	org := strings.TrimSpace(data.OrgName)
@@ -444,7 +514,7 @@ func lookupResolverInfo(client *http.Client, resolver string, timeoutSeconds int
 	if country == "" {
 		country = "unknown"
 	}
-	return org, country
+	return time.Since(start).Milliseconds(), org, country, true
 }
 
 func buildEngineArgs(cfg *Config, resolver string, port int) ([]string, error) {
