@@ -87,6 +87,18 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o f35 .
 - `-download-timeout`
   timeout in seconds for the download test
   default is `5`
+- `-upload`
+  run a real upload test through the tunnel
+  optional
+- `-upload-url`
+  HTTP URL used for the upload test
+  default is `https://speed.cloudflare.com/__up`
+- `-upload-bytes`
+  number of bytes sent in the upload test body
+  default is `100000`
+- `-upload-timeout`
+  timeout in seconds for the upload test
+  default is `5`
 - `-R`
   number of retries for each resolver after the first failed attempt
 - `-l`
@@ -114,6 +126,8 @@ Use these as the main knobs:
   raise this if the quick probe is timing out
 - `-download-timeout`
   raise this if the download test starts but does not finish in time
+- `-upload-timeout`
+  raise this if the upload test starts but does not finish in time
 - `-whois-timeout`
   raise this if the whois lookup is too slow
 
@@ -121,6 +135,7 @@ Good starting values:
 
 - slow tunnel startup: increase `-s`
 - weak or filtered path: increase `-download-timeout`
+- weak upload path: increase `-upload-timeout`
 - slow whois API: increase `-whois-timeout`
 - only probe fails: increase `-t`
 
@@ -239,15 +254,24 @@ Meaning:
 f35 -r resolvers.txt -e vaydns -d t.example.com -x socks5h -whois -a '-pubkey YOUR_PUBLIC_KEY'
 ```
 
-This keeps the enabled checks independent, and if the whois lookup succeeds, it also prints org and country for that resolver IP.
+This keeps the enabled checks independent, and if `-whois` is enabled, plain output also includes org and country fields for that resolver IP.
 
 This is most useful when the resolver IP itself belongs to the network you care about.
 If your tunnel goes into a more advanced upstream chain, this extra lookup can be less meaningful.
 
+### Add Upload Testing
+
+```bash
+f35 -r resolvers.txt -e vaydns -d t.example.com -x socks5h -download -upload -a '-pubkey YOUR_PUBLIC_KEY'
+```
+
+This adds a real upload request to the scan and keeps it independent from the other checks.
+By default it sends `100000` bytes with a `POST`, and you can change that with `-upload-bytes`.
+
 ### JSON Output
 
 ```bash
-f35 -r resolvers.txt -e vaydns -d t.example.com -x socks5h -whois -json -a '-pubkey YOUR_PUBLIC_KEY'
+f35 -r resolvers.txt -e vaydns -d t.example.com -x socks5h -whois -upload -json -a '-pubkey YOUR_PUBLIC_KEY'
 ```
 
 Use this if you want to parse the output in another program.
@@ -268,6 +292,7 @@ It is only checking whether the tunnel path can move a request and return any re
 That means:
 
 - the download request is the strongest signal
+- upload is the next strongest signal after download
 - whois and probe are weaker checks
 - F35 does not require HTTP `200`
 - even `400` or `404` can still prove that the tunnel is working
@@ -282,13 +307,14 @@ Use `-q` to silence those logs and keep only result lines on `stdout`.
 ### Normal Output
 
 ```txt
-1.2.3.4:53 342ms download="off" whois="off" probe="ok"
-5.6.7.8:53 89ms download="off" whois="off" probe="ok"
+1.2.3.4:53 342ms download="off" upload="off" whois="off" probe="ok"
+5.6.7.8:53 89ms download="off" upload="off" whois="off" probe="ok"
 ```
 
 Only usable resolvers are printed.
 
 A resolver is considered usable if at least one enabled check succeeds. By default, probe is the primary signal.
+When more than one enabled check succeeds, latency priority is `download > upload > whois > probe`.
 F35 does not require HTTP `200`.
 Even a `400` or `404` can still prove that the tunnel is working.
 
@@ -303,17 +329,17 @@ If you pipe the output to a file or another command, colors are not printed.
 ### Output With Checks
 
 ```txt
-1.2.3.4:53 342ms download="ok" whois="ok" probe="fail" org="Iran Information Technology Company PJSC" country="Iran"
-5.6.7.8:53 2140ms download="ok" whois="fail" probe="ok"
+1.2.3.4:53 342ms download="ok" upload="ok" whois="ok" probe="fail" org="Iran Information Technology Company PJSC" country="Iran"
+5.6.7.8:53 2140ms download="ok" upload="fail" whois="fail" probe="ok" org="" country=""
 ```
 
-The output stays simple and the status fields always appear in the same order.
+The output stays simple and the status fields always appear in the same order. When `-whois` is enabled, `org` and `country` are appended at the end.
 
 ### Output With `-json`
 
 ```json
-{"resolver":"1.2.3.4:53","latency_ms":342,"probe":"ok","whois":"off","download":"off"}
-{"resolver":"5.6.7.8:53","latency_ms":2140,"probe":"ok","whois":"fail","download":"ok"}
+{"resolver":"1.2.3.4:53","latency_ms":342,"download":"off","upload":"off","whois":"off","probe":"ok"}
+{"resolver":"5.6.7.8:53","latency_ms":2140,"download":"ok","upload":"fail","whois":"fail","probe":"ok"}
 ```
 
 ## Good Defaults For New Users

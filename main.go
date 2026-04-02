@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -28,22 +29,27 @@ type Config struct {
 	ResolversFile   string
 	TestURL         string
 	DownloadURL     string
+	UploadURL       string
 	JSON            bool
 	Quiet           bool
 	Probe           bool
 	Download        bool
+	Upload          bool
 	Whois           bool
 	Proxy           string
 	ProxyUser       string
 	ProxyPass       string
 	Args            string
 	ParsedArgs      []string
+	UploadPayload   []byte
 	Colorize        bool
 	Workers         int
 	Retries         int
 	TunnelWait      int
 	Timeout         int
 	DownloadTimeout int
+	UploadTimeout   int
+	UploadBytes     int
 	WhoisTimeout    int
 	StartPort       int
 }
@@ -95,9 +101,10 @@ type whoisResponse struct {
 type Result struct {
 	Resolver  string `json:"resolver"`
 	LatencyMS int64  `json:"latency_ms"`
-	Probe     string `json:"probe"`
-	Whois     string `json:"whois"`
 	Download  string `json:"download"`
+	Upload    string `json:"upload"`
+	Whois     string `json:"whois"`
+	Probe     string `json:"probe"`
 	Org       string `json:"org,omitempty"`
 	Country   string `json:"country,omitempty"`
 }
@@ -164,6 +171,9 @@ func parseFlags() *Config {
 	flag.BoolVar(&c.Probe, "probe", true, "Run a quick connectivity probe through the tunnel")
 	flag.BoolVar(&c.Download, "download", false, "Run a real download test through the tunnel")
 	flag.StringVar(&c.DownloadURL, "download-url", "https://speed.cloudflare.com/__down?bytes=100000", "HTTP URL used for the download test")
+	flag.BoolVar(&c.Upload, "upload", false, "Run a real upload test through the tunnel")
+	flag.StringVar(&c.UploadURL, "upload-url", "https://speed.cloudflare.com/__up", "HTTP URL used for the upload test")
+	flag.IntVar(&c.UploadBytes, "upload-bytes", 100000, "Number of bytes to send for the upload test")
 	flag.BoolVar(&c.Whois, "whois", false, "Lookup resolver owner info and print organization and country")
 	flag.StringVar(&c.Proxy, "x", "socks5h", "Protocol to use when sending request through the tunnel: http|https|socks5|socks5h")
 	flag.StringVar(&c.ProxyUser, "U", "", "Proxy username (if the tunnel exit requires auth)")
@@ -173,6 +183,7 @@ func parseFlags() *Config {
 	flag.IntVar(&c.TunnelWait, "s", 1000, "Time to wait (ms) for tunnel establishment before testing HTTP")
 	flag.IntVar(&c.Timeout, "t", 5, "Probe request timeout in seconds")
 	flag.IntVar(&c.DownloadTimeout, "download-timeout", 5, "Download request timeout in seconds")
+	flag.IntVar(&c.UploadTimeout, "upload-timeout", 5, "Upload request timeout in seconds")
 	flag.IntVar(&c.WhoisTimeout, "whois-timeout", 15, "WHOIS lookup timeout in seconds")
 	flag.IntVar(&c.StartPort, "l", 40000, "Starting local port for tunnel listeners")
 
@@ -211,8 +222,8 @@ func validateConfig(cfg *Config) error {
 	if cfg.ProxyPass != "" && cfg.ProxyUser == "" {
 		return errors.New("-P requires -U")
 	}
-	if !cfg.Probe && !cfg.Download && !cfg.Whois {
-		return errors.New("at least one of -probe, -download, or -whois must be enabled")
+	if !cfg.Probe && !cfg.Download && !cfg.Upload && !cfg.Whois {
+		return errors.New("at least one of -probe, -download, -upload, or -whois must be enabled")
 	}
 
 	if cfg.Workers < 1 {
@@ -226,6 +237,12 @@ func validateConfig(cfg *Config) error {
 	}
 	if cfg.DownloadTimeout < 1 {
 		return errors.New("--download-timeout must be >= 1")
+	}
+	if cfg.UploadTimeout < 1 {
+		return errors.New("--upload-timeout must be >= 1")
+	}
+	if cfg.UploadBytes < 1 {
+		return errors.New("--upload-bytes must be >= 1")
 	}
 	if cfg.WhoisTimeout < 1 {
 		return errors.New("--whois-timeout must be >= 1")
@@ -246,6 +263,10 @@ func validateConfig(cfg *Config) error {
 			return fmt.Errorf("binary %s not found in PATH; use -p to specify path", spec.DefaultBinary)
 		}
 		cfg.ClientPath = path
+	}
+
+	if cfg.Upload {
+		cfg.UploadPayload = bytes.Repeat([]byte("0"), cfg.UploadBytes)
 	}
 	return nil
 }
@@ -351,6 +372,7 @@ func try(resolver string, port int, cfg *Config, client *http.Client) bool {
 	var result Result
 	result.Resolver = resolver
 	result.Download = "off"
+	result.Upload = "off"
 	result.Whois = "off"
 	result.Probe = "off"
 
@@ -362,7 +384,19 @@ func try(resolver string, port int, cfg *Config, client *http.Client) bool {
 		if ok {
 			result.Download = "ok"
 			result.LatencyMS = latency
-			bestPriority = 3
+			bestPriority = 4
+		}
+	}
+
+	if cfg.Upload {
+		result.Upload = "fail"
+		latency, ok := doUploadCheck(client, cfg.UploadURL, cfg.UploadTimeout, cfg.UploadPayload)
+		if ok {
+			result.Upload = "ok"
+			if bestPriority < 3 {
+				result.LatencyMS = latency
+				bestPriority = 3
+			}
 		}
 	}
 
@@ -429,12 +463,11 @@ func formatPlainTextResult(result Result, colorize bool) string {
 	line := fmt.Sprintf("%s %s", result.Resolver, formatLatency(result.LatencyMS, colorize))
 	parts := []string{line}
 	parts = append(parts, "download="+strconv.Quote(result.Download))
+	parts = append(parts, "upload="+strconv.Quote(result.Upload))
 	parts = append(parts, "whois="+strconv.Quote(result.Whois))
 	parts = append(parts, "probe="+strconv.Quote(result.Probe))
-	if result.Org != "" {
+	if result.Whois != "off" {
 		parts = append(parts, "org="+strconv.Quote(result.Org))
-	}
-	if result.Country != "" {
 		parts = append(parts, "country="+strconv.Quote(result.Country))
 	}
 	return strings.Join(parts, " ")
@@ -452,7 +485,7 @@ func doHTTPCheck(client *http.Client, targetURL string, timeoutSeconds int, drai
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", targetURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
 	if err != nil {
 		return 0, false
 	}
@@ -474,6 +507,27 @@ func doHTTPCheck(client *http.Client, targetURL string, timeoutSeconds int, drai
 	return time.Since(start).Milliseconds(), true
 }
 
+func doUploadCheck(client *http.Client, targetURL string, timeoutSeconds int, payload []byte) (int64, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(payload))
+	if err != nil {
+		return 0, false
+	}
+	req.Header.Set("Connection", "close")
+	req.Header.Set("Content-Type", "application/octet-stream")
+
+	start := time.Now()
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, false
+	}
+	defer resp.Body.Close()
+
+	return time.Since(start).Milliseconds(), true
+}
+
 func lookupResolverInfo(client *http.Client, resolver string, timeoutSeconds int) (int64, string, string, bool) {
 	host, _, err := net.SplitHostPort(resolver)
 	if err != nil {
@@ -483,7 +537,7 @@ func lookupResolverInfo(client *http.Client, resolver string, timeoutSeconds int
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", whoisURL+"/"+host, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, whoisURL+"/"+host, nil)
 	if err != nil {
 		return 0, "unknown", "unknown", false
 	}
