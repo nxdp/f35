@@ -181,9 +181,9 @@ func parseFlags() *Config {
 	flag.IntVar(&c.Workers, "w", 20, "Number of concurrent scanning workers")
 	flag.IntVar(&c.Retries, "R", 0, "Number of retries per resolver after the first failure")
 	flag.IntVar(&c.TunnelWait, "s", 1000, "Time to wait (ms) for tunnel establishment before testing HTTP")
-	flag.IntVar(&c.Timeout, "t", 5, "Probe request timeout in seconds")
-	flag.IntVar(&c.DownloadTimeout, "download-timeout", 5, "Download request timeout in seconds")
-	flag.IntVar(&c.UploadTimeout, "upload-timeout", 5, "Upload request timeout in seconds")
+	flag.IntVar(&c.Timeout, "t", 15, "Probe request timeout in seconds")
+	flag.IntVar(&c.DownloadTimeout, "download-timeout", 15, "Download request timeout in seconds")
+	flag.IntVar(&c.UploadTimeout, "upload-timeout", 15, "Upload request timeout in seconds")
 	flag.IntVar(&c.WhoisTimeout, "whois-timeout", 15, "WHOIS lookup timeout in seconds")
 	flag.IntVar(&c.StartPort, "l", 40000, "Starting local port for tunnel listeners")
 

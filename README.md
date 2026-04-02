@@ -75,6 +75,7 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o f35 .
   this is important because the tunnel may need time to become usable
 - `-t`
   probe request timeout in seconds
+  default is `15`
 - `-probe`
   run a quick connectivity probe through the tunnel
   enabled by default
@@ -86,7 +87,7 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o f35 .
   default is `https://speed.cloudflare.com/__down?bytes=100000`
 - `-download-timeout`
   timeout in seconds for the download test
-  default is `5`
+  default is `15`
 - `-upload`
   run a real upload test through the tunnel
   optional
@@ -98,7 +99,7 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o f35 .
   default is `100000`
 - `-upload-timeout`
   timeout in seconds for the upload test
-  default is `5`
+  default is `15`
 - `-R`
   number of retries for each resolver after the first failed attempt
 - `-l`
