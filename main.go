@@ -31,6 +31,7 @@ type Config struct {
 	UploadURL       string
 	JSON            bool
 	Quiet           bool
+	Short           bool
 	Probe           bool
 	Download        bool
 	Upload          bool
@@ -199,6 +200,7 @@ func parseFlags() *Config {
 	flag.StringVar(&c.Args, "a", "", "Extra engine CLI args; supports placeholders like {resolver}, {domain}, {listen}")
 	flag.BoolVar(&c.JSON, "json", false, "Print one JSON object per result line")
 	flag.BoolVar(&c.Quiet, "q", false, "Suppress startup and completion logs")
+	flag.BoolVar(&c.Short, "short", false, "Print only IP:PORT and latency in plain text output")
 	flag.StringVar(&c.TestURL, "u", "http://www.google.com/gen_204", "HTTP URL used for the probe request through the tunnel")
 	flag.BoolVar(&c.Probe, "probe", true, "Run a quick connectivity probe through the tunnel")
 	flag.BoolVar(&c.Download, "download", false, "Run a real download test through the tunnel")
@@ -478,6 +480,10 @@ func printResult(cfg *Config, result Result, status *statusPrinter) {
 		_ = json.NewEncoder(os.Stdout).Encode(result)
 		return
 	}
+	if cfg.Short {
+		fmt.Println(formatShortResult(result, cfg.Colorize))
+		return
+	}
 
 	fmt.Println(formatPlainTextResult(result, cfg.Colorize))
 }
@@ -510,6 +516,10 @@ func formatPlainTextResult(result Result, colorize bool) string {
 		parts = append(parts, "country="+strconv.Quote(result.Country))
 	}
 	return strings.Join(parts, " ")
+}
+
+func formatShortResult(result Result, colorize bool) string {
+	return fmt.Sprintf("%s %s", result.Resolver, formatLatency(result.LatencyMS, colorize))
 }
 
 func fileIsTerminal(file *os.File) bool {

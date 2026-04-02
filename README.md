@@ -114,6 +114,8 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o f35 .
   default is `15`
 - `-json`
   print one JSON object per result line instead of plain text
+- `-short`
+  print only `IP:PORT LATENCY` in plain text output
 - `-q`
   suppress startup and completion logs
 
@@ -348,6 +350,13 @@ If you pipe the output to a file or another command, colors are not printed.
 ```
 
 The output stays simple and the status fields always appear in the same order. When `-whois` is enabled, `org` and `country` are appended at the end.
+
+### Output With `-short`
+
+```txt
+1.2.3.4:53 342ms
+5.6.7.8:53 89ms
+```
 
 ### Output With `-json`
 
