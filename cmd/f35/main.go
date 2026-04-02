@@ -118,7 +118,7 @@ func parseFlags() (f35.Config, cliOptions, error) {
 	flag.StringVar(&cfg.Domain, "d", "", "Tunnel domain (e.g., ns.example.com)")
 	flag.StringVar(&opts.args, "a", "", "Extra engine CLI args; supports placeholders like {resolver}, {domain}, {listen}")
 	flag.BoolVar(&opts.json, "json", false, "Print one JSON object per result line")
-	flag.BoolVar(&opts.quiet, "q", false, "Suppress startup and completion logs")
+	flag.BoolVar(&opts.quiet, "q", false, "Suppress startup, progress, and completion logs")
 	flag.BoolVar(&opts.short, "short", false, "Print only IP:PORT and latency in plain text output")
 	flag.StringVar(&cfg.ProbeURL, "u", cfg.ProbeURL, "HTTP URL used for the probe request through the tunnel")
 	flag.BoolVar(&cfg.Probe, "probe", cfg.Probe, "Run a quick connectivity probe through the tunnel")
@@ -201,7 +201,7 @@ func startProgressReporter(ui *statusUI) func() {
 	return func() {
 		close(stop)
 		<-done
-		ui.ClearProgress()
+		ui.StopLiveProgress()
 	}
 }
 
@@ -252,6 +252,13 @@ func (ui *statusUI) ClearProgress() {
 	ui.mu.Lock()
 	defer ui.mu.Unlock()
 	ui.clearProgressLocked()
+}
+
+func (ui *statusUI) StopLiveProgress() {
+	ui.mu.Lock()
+	defer ui.mu.Unlock()
+	ui.clearProgressLocked()
+	ui.liveProgress = false
 }
 
 func (ui *statusUI) clearProgressLocked() {

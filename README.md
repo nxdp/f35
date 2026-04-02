@@ -87,6 +87,7 @@ func main() {
   file that contains resolver IPs
 - `-e`
   which tunnel client to use: `dnstt`, `slipstream`, or `vaydns`
+  default is `vaydns`
 - `-d`
   tunnel domain
 - `-a`
