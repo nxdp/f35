@@ -42,7 +42,43 @@ You need all of these:
 ## Build
 
 ```bash
-CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o f35 .
+CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o f35 ./cmd/f35
+```
+
+## Project Structure
+
+- root package `github.com/nxdp/f35`
+  importable scanner library
+- `./cmd/f35`
+  CLI entrypoint
+
+## Use As Library
+
+```go
+package main
+
+import (
+	"fmt"
+
+	"github.com/nxdp/f35"
+)
+
+func main() {
+	cfg := f35.DefaultConfig()
+	cfg.Domain = "t.example.com"
+	cfg.Resolvers = []string{"1.1.1.1:53", "8.8.8.8:53"}
+	cfg.Upload = true
+	cfg.ExtraArgs = []string{"-pubkey", "YOUR_PUBLIC_KEY"}
+
+	err := f35.Scan(cfg, f35.Hooks{
+		OnResult: func(result f35.Result) {
+			fmt.Println(result.Resolver, result.LatencyMS)
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+}
 ```
 
 ## Flags
@@ -312,9 +348,9 @@ On interactive terminals, the progress status updates in place on a single line 
 Typical status logs look like this:
 
 ```txt
-[INFO] starting | resolvers=5000 | workers=20 | engine=dnstt
+[INFO] starting | resolvers=5000 | workers=20 | engine=vaydns
 [INFO] config | checks=probe,upload | wait=1000ms | timeouts=probe=15s,upload=15s
-[INFO] progress | 50/5000 | healthy=11 | failed=39 | elapsed=28s
+[INFO] 50/5000 | healthy=11 | failed=39 | elapsed=28s
 [INFO] completed | 5000/5000 | healthy=241 | failed=4759 | elapsed=2m14s
 ```
 

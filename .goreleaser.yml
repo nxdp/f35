@@ -14,9 +14,9 @@ builds:
       - arm64
     env:
       - CGO_ENABLED=0
-    main: .
+    main: ./cmd/f35
     ldflags:
-      - -s -w -X main.version={{.Version}}
+      - -s -w
 
 archives:
   - format: binary
