@@ -18,7 +18,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -43,6 +42,7 @@ type Config struct {
 	ParsedArgs      []string
 	UploadPayload   []byte
 	Colorize        bool
+	LogColorize     bool
 	Workers         int
 	Retries         int
 	TunnelWait      int
@@ -91,6 +91,7 @@ var engineSpecs = map[string]EngineSpec{
 }
 
 const whoisURL = "https://api.ipiz.net"
+const defaultProgressUpdateInterval = time.Second
 
 type whoisResponse struct {
 	OrgName string `json:"org_name"`
@@ -109,9 +110,23 @@ type Result struct {
 	Country   string `json:"country,omitempty"`
 }
 
+type statusPrinter struct {
+	mu           sync.Mutex
+	colorize     bool
+	liveProgress bool
+	progressLine string
+	progressSeen bool
+}
+
+type scanStats struct {
+	mu        sync.Mutex
+	processed int64
+	healthy   int64
+}
+
 func main() {
 	if err := run(); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		logf(fileIsTerminal(os.Stderr), "ERR", "%v", err)
 		os.Exit(1)
 	}
 }
@@ -129,19 +144,28 @@ func run() error {
 		return err
 	}
 
+	startedAt := time.Now()
+	status := newStatusPrinter(cfg)
+
 	if !cfg.Quiet {
-		fmt.Fprintf(os.Stderr, "scan started: resolvers=%d workers=%d engine=%s\n", len(resolvers), cfg.Workers, cfg.Engine)
+		status.Log("INFO", "starting | resolvers=%d | workers=%d | engine=%s", len(resolvers), cfg.Workers, cfg.Engine)
+		status.Log("INFO", "config | checks=%s | wait=%dms | timeouts=%s", enabledChecks(cfg), cfg.TunnelWait, enabledTimeouts(cfg))
 	}
 
 	jobs := make(chan string, cfg.Workers*2)
 	var wg sync.WaitGroup
-	var working atomic.Int64
+	stats := &scanStats{}
+
+	var stopProgress func()
+	if !cfg.Quiet && status.liveProgress {
+		stopProgress = startProgressReporter(status, len(resolvers), stats, startedAt)
+	}
 
 	for i := 0; i < cfg.Workers; i++ {
 		wg.Add(1)
 		go func(port int) {
 			defer wg.Done()
-			worker(port, cfg, jobs, &working)
+			worker(port, cfg, jobs, stats, status)
 		}(cfg.StartPort + i)
 	}
 
@@ -151,8 +175,16 @@ func run() error {
 	close(jobs)
 
 	wg.Wait()
+	if stopProgress != nil {
+		stopProgress()
+	}
 	if !cfg.Quiet {
-		fmt.Fprintf(os.Stderr, "scan finished: %d working resolvers\n", working.Load())
+		total, healthy := stats.Snapshot()
+		level := "INFO"
+		if healthy == 0 {
+			level = "WARN"
+		}
+		status.Log(level, "completed | %d/%d | healthy=%d | failed=%d | elapsed=%s", total, len(resolvers), healthy, total-healthy, formatElapsed(time.Since(startedAt)))
 	}
 	return nil
 }
@@ -191,7 +223,8 @@ func parseFlags() *Config {
 
 	c.Engine = strings.ToLower(strings.TrimSpace(c.Engine))
 	c.Proxy = strings.ToLower(strings.TrimSpace(c.Proxy))
-	c.Colorize = !c.JSON && stdoutIsTerminal()
+	c.Colorize = !c.JSON && fileIsTerminal(os.Stdout)
+	c.LogColorize = fileIsTerminal(os.Stderr)
 	return c
 }
 
@@ -318,7 +351,7 @@ func formatAddr(line string) (string, bool) {
 	return net.JoinHostPort(host, port), true
 }
 
-func worker(port int, cfg *Config, jobs <-chan string, working *atomic.Int64) {
+func worker(port int, cfg *Config, jobs <-chan string, stats *scanStats, status *statusPrinter) {
 	proxyURL := &url.URL{
 		Scheme: cfg.Proxy,
 		Host:   net.JoinHostPort("127.0.0.1", strconv.Itoa(port)),
@@ -340,16 +373,18 @@ func worker(port int, cfg *Config, jobs <-chan string, working *atomic.Int64) {
 	}
 
 	for resolver := range jobs {
+		success := false
 		for i := 0; i <= cfg.Retries; i++ {
-			if try(resolver, port, cfg, client) {
-				working.Add(1)
+			if try(resolver, port, cfg, client, status) {
+				success = true
 				break
 			}
 		}
+		stats.Record(success)
 	}
 }
 
-func try(resolver string, port int, cfg *Config, client *http.Client) bool {
+func try(resolver string, port int, cfg *Config, client *http.Client, status *statusPrinter) bool {
 	args, err := buildEngineArgs(cfg, resolver, port)
 	if err != nil {
 		return false
@@ -430,11 +465,15 @@ func try(resolver string, port int, cfg *Config, client *http.Client) bool {
 		return false
 	}
 
-	printResult(cfg, result)
+	printResult(cfg, result, status)
 	return true
 }
 
-func printResult(cfg *Config, result Result) {
+func printResult(cfg *Config, result Result, status *statusPrinter) {
+	if status != nil {
+		status.PrintResult(cfg, result)
+		return
+	}
 	if cfg.JSON {
 		_ = json.NewEncoder(os.Stdout).Encode(result)
 		return
@@ -473,12 +512,196 @@ func formatPlainTextResult(result Result, colorize bool) string {
 	return strings.Join(parts, " ")
 }
 
-func stdoutIsTerminal() bool {
-	info, err := os.Stdout.Stat()
+func fileIsTerminal(file *os.File) bool {
+	info, err := file.Stat()
 	if err != nil {
 		return false
 	}
 	return (info.Mode() & os.ModeCharDevice) != 0
+}
+
+func startProgressReporter(status *statusPrinter, total int, stats *scanStats, startedAt time.Time) func() {
+	stop := make(chan struct{})
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		ticker := time.NewTicker(defaultProgressUpdateInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				doneCount, healthyCount := stats.Snapshot()
+				status.UpdateProgress(fmt.Sprintf("progress | %d/%d | healthy=%d | failed=%d | elapsed=%s", doneCount, total, healthyCount, doneCount-healthyCount, formatElapsed(time.Since(startedAt))))
+			case <-stop:
+				return
+			}
+		}
+	}()
+
+	return func() {
+		close(stop)
+		<-done
+		status.ClearProgress()
+	}
+}
+
+func (s *scanStats) Record(success bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.processed++
+	if success {
+		s.healthy++
+	}
+}
+
+func (s *scanStats) Snapshot() (processed, healthy int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.processed, s.healthy
+}
+
+func newStatusPrinter(cfg *Config) *statusPrinter {
+	return &statusPrinter{
+		colorize:     cfg.LogColorize,
+		liveProgress: !cfg.Quiet && cfg.LogColorize,
+	}
+}
+
+func (s *statusPrinter) Log(level string, format string, args ...any) {
+	if s == nil {
+		logf(false, level, format, args...)
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.clearProgressLocked()
+	logf(s.colorize, level, format, args...)
+	s.renderProgressLocked()
+}
+
+func (s *statusPrinter) UpdateProgress(line string) {
+	if s == nil || !s.liveProgress {
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.progressLine = line
+	s.renderProgressLocked()
+}
+
+func (s *statusPrinter) ClearProgress() {
+	if s == nil || !s.liveProgress {
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.clearProgressLocked()
+	s.progressLine = ""
+}
+
+func (s *statusPrinter) PrintResult(cfg *Config, result Result) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.clearProgressLocked()
+	if cfg.JSON {
+		_ = json.NewEncoder(os.Stdout).Encode(result)
+	} else {
+		fmt.Println(formatPlainTextResult(result, cfg.Colorize))
+	}
+	s.renderProgressLocked()
+}
+
+func (s *statusPrinter) clearProgressLocked() {
+	if !s.liveProgress || !s.progressSeen {
+		return
+	}
+
+	_, _ = io.WriteString(os.Stderr, "\r\033[K")
+	s.progressSeen = false
+}
+
+func (s *statusPrinter) renderProgressLocked() {
+	if !s.liveProgress || s.progressLine == "" {
+		return
+	}
+
+	_, _ = fmt.Fprintf(os.Stderr, "\r\033[K%s %s", formatLogLevel("INFO", s.colorize), s.progressLine)
+	s.progressSeen = true
+}
+
+func enabledChecks(cfg *Config) string {
+	checks := make([]string, 0, 4)
+	if cfg.Probe {
+		checks = append(checks, "probe")
+	}
+	if cfg.Download {
+		checks = append(checks, "download")
+	}
+	if cfg.Upload {
+		checks = append(checks, "upload")
+	}
+	if cfg.Whois {
+		checks = append(checks, "whois")
+	}
+	return strings.Join(checks, ",")
+}
+
+func enabledTimeouts(cfg *Config) string {
+	parts := make([]string, 0, 4)
+	if cfg.Probe {
+		parts = append(parts, fmt.Sprintf("probe=%ds", cfg.Timeout))
+	}
+	if cfg.Download {
+		parts = append(parts, fmt.Sprintf("download=%ds", cfg.DownloadTimeout))
+	}
+	if cfg.Upload {
+		parts = append(parts, fmt.Sprintf("upload=%ds", cfg.UploadTimeout))
+	}
+	if cfg.Whois {
+		parts = append(parts, fmt.Sprintf("whois=%ds", cfg.WhoisTimeout))
+	}
+	return strings.Join(parts, ",")
+}
+
+func formatElapsed(duration time.Duration) string {
+	if duration < time.Second {
+		return "0s"
+	}
+	return duration.Truncate(time.Second).String()
+}
+
+func logf(colorize bool, level string, format string, args ...any) {
+	fmt.Fprintf(os.Stderr, "%s %s\n", formatLogLevel(level, colorize), fmt.Sprintf(format, args...))
+}
+
+func formatLogLevel(level string, colorize bool) string {
+	tag := "[" + level + "]"
+	if !colorize {
+		return tag
+	}
+
+	switch level {
+	case "INFO":
+		return "\033[32m" + tag + "\033[0m"
+	case "WARN":
+		return "\033[33m" + tag + "\033[0m"
+	case "ERR":
+		return "\033[31m" + tag + "\033[0m"
+	default:
+		return tag
+	}
 }
 
 func doHTTPCheck(client *http.Client, targetURL string, timeoutSeconds int, drainBody bool) (int64, bool) {

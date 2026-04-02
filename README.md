@@ -302,8 +302,21 @@ That means:
 
 ## Output
 
-By default, scan status is printed to `stderr` with a short `scan started` and `scan finished` line.
+By default, F35 also prints colored status logs to `stderr`.
 Use `-q` to silence those logs and keep only result lines on `stdout`.
+
+On interactive terminals, the progress status updates in place on a single line so healthy resolver output stays visible above it.
+
+Typical status logs look like this:
+
+```txt
+[INFO] starting | resolvers=5000 | workers=20 | engine=dnstt
+[INFO] config | checks=probe,upload | wait=1000ms | timeouts=probe=15s,upload=15s
+[INFO] progress | 50/5000 | healthy=11 | failed=39 | elapsed=28s
+[INFO] completed | 5000/5000 | healthy=241 | failed=4759 | elapsed=2m14s
+```
+
+If no resolver passes, the final status line is printed as `[WARN]`.
 
 ### Normal Output
 
