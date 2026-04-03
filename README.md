@@ -79,12 +79,6 @@ client_path = "./vaydns-client"
 domain = "t.example.com"
 args = "-pubkey YOUR_PUBLIC_KEY"
 
-dns = true
-dns_name = "cloudflare.com"
-dns_timeout = 2
-dns_retries = 1
-dns_threads = 100
-
 probe = true
 probe_url = "http://www.google.com/gen_204"
 probe_timeout = 15
@@ -125,8 +119,6 @@ What to edit first:
   your tunnel client flags, usually including the public key
 - `client_path`
   set this if the client binary is not in `PATH`
-- `dns`
-  enable this for large resolver lists to prefilter them quickly
 
 Simple run:
 
@@ -162,11 +154,6 @@ Example: `-args "-pubkey YOUR_PUBLIC_KEY"`.
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `-dns` | `false` | Run a fast UDP DNS prefilter before the E2E scan. This only checks whether the resolver answers DNS. |
-| `-dns-name` | `cloudflare.com` | Domain name used for the DNS prefilter query. |
-| `-dns-timeout` | `2` | DNS prefilter timeout in seconds. |
-| `-dns-retries` | `1` | Retry count for each resolver in the DNS prefilter. |
-| `-dns-threads` | `100` | Concurrent worker count for the DNS prefilter. |
 | `-probe` | `true` | Run a quick connectivity probe through the tunnel. |
 | `-probe-url` | `http://www.google.com/gen_204` | HTTP URL used for the probe request. |
 | `-probe-timeout` | `15` | Probe request timeout in seconds. |
@@ -206,8 +193,6 @@ Use these as the main knobs:
 
 - `-wait`
   wait longer here if the tunnel starts too slowly
-- `-dns-timeout`
-  raise this if the DNS prefilter is missing resolvers that should answer DNS
 - `-probe-timeout`
   raise this if the quick probe is timing out
 - `-download-timeout`
@@ -219,9 +204,8 @@ Use these as the main knobs:
 
 Good starting values:
 
-- very large resolver list: enable `-dns`
+- very large resolver list: lower `-workers` if the tunnel client starts struggling
 - slow tunnel startup: increase `-wait`
-- slow DNS responses in prefilter: increase `-dns-timeout`
 - weak or filtered path: increase `-download-timeout`
 - weak upload path: increase `-upload-timeout`
 - slow whois API: increase `-whois-timeout`
@@ -388,15 +372,6 @@ f35 -resolvers resolvers.txt -engine vaydns -domain t.example.com -proxy socks5h
 This adds a real upload request to the scan and keeps it independent from the other checks.
 By default it sends `100000` bytes with a `POST`, and you can change that with `-upload-bytes`.
 
-### Use The DNS Prefilter First
-
-```bash
-f35 -resolvers resolvers.txt -domain t.example.com -dns -args '-pubkey YOUR_PUBLIC_KEY'
-```
-
-This first sends a fast UDP DNS query to each resolver using `cloudflare.com`.
-Only resolvers that answer move on to the real E2E tunnel scan.
-
 ### JSON Output
 
 ```bash
@@ -434,13 +409,12 @@ By default, F35 also prints colored status logs to `stderr`.
 Use `-quiet` to silence those logs and keep only result lines on `stdout`.
 
 On interactive terminals, the progress status updates in place on a single line so healthy resolver output stays visible above it.
-If `-dns` is enabled, that same line first shows `dns` and then switches to `e2e`.
 
 Typical status logs look like this:
 
 ```txt
 [INFO] starting | resolvers=5000 | workers=20 | engine=vaydns
-[INFO] e2e 50/5000 | healthy=11 | failed=39 | elapsed=28s
+[INFO] 50/5000 | healthy=11 | failed=39 | elapsed=28s
 [INFO] completed | 5000/5000 | healthy=241 | failed=4759 | elapsed=2m14s
 ```
 

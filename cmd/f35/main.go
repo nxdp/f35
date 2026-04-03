@@ -11,7 +11,7 @@ import (
 	"time"
 
 	f35 "github.com/nxdp/f35"
-	flag "github.com/spf13/pflag"
+	pflag "github.com/spf13/pflag"
 )
 
 const defaultProgressUpdateInterval = time.Second
@@ -45,7 +45,7 @@ func main() {
 func run() error {
 	cfg, opts, err := parseFlags()
 	if err != nil {
-		if errors.Is(err, flag.ErrHelp) {
+		if err == pflag.ErrHelp {
 			printUsage()
 			return nil
 		}
@@ -66,11 +66,7 @@ func run() error {
 
 	startedAt := time.Now()
 	ui := newStatusUI(opts, startedAt, len(cfg.Resolvers))
-	initialStage := "e2e"
-	if cfg.Alive {
-		initialStage = "alive"
-	}
-	ui.UpdateProgress(f35.Progress{Stage: initialStage, Total: len(cfg.Resolvers)})
+	ui.UpdateProgress(f35.Progress{Total: len(cfg.Resolvers)})
 
 	if !opts.quiet {
 		ui.Log("INFO", "starting | resolvers=%d | workers=%d | engine=%s", len(cfg.Resolvers), cfg.Workers, cfg.Engine)
@@ -100,12 +96,11 @@ func run() error {
 
 	if !opts.quiet {
 		progress := ui.Progress()
-		primaryLabel := progressPrimaryLabel(progress.Stage)
 		level := "INFO"
 		if progress.Healthy == 0 {
 			level = "WARN"
 		}
-		ui.Log(level, "completed | %d/%d | %s=%d | failed=%d | elapsed=%s", progress.Processed, progress.Total, primaryLabel, progress.Healthy, progress.Failed, formatElapsed(time.Since(startedAt)))
+		ui.Log(level, "completed | %d/%d | healthy=%d | failed=%d | elapsed=%s", progress.Processed, progress.Total, progress.Healthy, progress.Failed, formatElapsed(time.Since(startedAt)))
 	}
 
 	return nil
@@ -220,28 +215,15 @@ func (ui *statusUI) renderProgressLocked() {
 	}
 	_, _ = fmt.Fprintf(
 		os.Stderr,
-		"\r\033[K%s %s %d/%d | %s=%d | failed=%d | elapsed=%s",
+		"\r\033[K%s %d/%d | healthy=%d | failed=%d | elapsed=%s",
 		formatLogLevel("INFO", ui.colorize),
-		progressStage(ui.progress.Stage),
 		ui.progress.Processed,
 		ui.progress.Total,
-		progressPrimaryLabel(ui.progress.Stage),
 		ui.progress.Healthy,
 		ui.progress.Failed,
 		formatElapsed(time.Since(ui.startedAt)),
 	)
 	ui.progressSeen = true
-}
-
-func progressStage(stage string) string {
-	if stage == "alive" {
-		return "dns"
-	}
-	return "e2e"
-}
-
-func progressPrimaryLabel(stage string) string {
-	return "healthy"
 }
 
 func formatPlainTextResult(result f35.Result, colorize bool) string {

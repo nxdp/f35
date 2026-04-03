@@ -13,36 +13,15 @@ import (
 
 type scanStats struct {
 	mu        sync.Mutex
-	stage     string
 	total     int
 	processed int
 	healthy   int
 }
 
-const (
-	progressStageAlive = "alive"
-	progressStageE2E   = "e2e"
-)
-
 func Scan(cfg Config, hooks Hooks) error {
 	runtime, err := prepareConfig(cfg)
 	if err != nil {
 		return err
-	}
-
-	if runtime.Alive {
-		aliveResolvers, err := filterAliveResolvers(&runtime, hooks)
-		if err != nil {
-			return err
-		}
-		runtime.parsedResolvers = aliveResolvers
-		runtime.Resolvers = resolverAddrs(aliveResolvers)
-		if len(runtime.parsedResolvers) == 0 {
-			return nil
-		}
-		if hooks.OnProgress != nil {
-			hooks.OnProgress(Progress{Stage: progressStageE2E, Total: len(runtime.parsedResolvers)})
-		}
 	}
 
 	return scanResolvers(&runtime, hooks)
@@ -51,7 +30,7 @@ func Scan(cfg Config, hooks Hooks) error {
 func scanResolvers(runtime *runtimeConfig, hooks Hooks) error {
 	total := len(runtime.parsedResolvers)
 	jobs := make(chan parsedResolver, runtime.Workers*2)
-	stats := newScanStats(progressStageE2E, total)
+	stats := newScanStats(total)
 
 	var wg sync.WaitGroup
 	for i := 0; i < runtime.Workers; i++ {
@@ -104,9 +83,8 @@ func worker(port int, cfg *runtimeConfig, jobs <-chan parsedResolver, hooks Hook
 	}
 }
 
-func newScanStats(stage string, total int) *scanStats {
+func newScanStats(total int) *scanStats {
 	return &scanStats{
-		stage: stage,
 		total: total,
 	}
 }
@@ -121,7 +99,6 @@ func (s *scanStats) Record(success bool) Progress {
 	}
 
 	return Progress{
-		Stage:     s.stage,
 		Total:     s.total,
 		Processed: s.processed,
 		Healthy:   s.healthy,

@@ -13,11 +13,9 @@ type Config struct {
 	ClientPath      string
 	Domain          string
 	Resolvers       []string
-	AliveName       string
 	ProbeURL        string
 	DownloadURL     string
 	UploadURL       string
-	Alive           bool
 	Probe           bool
 	Download        bool
 	Upload          bool
@@ -27,11 +25,8 @@ type Config struct {
 	ProxyPass       string
 	ExtraArgs       []string
 	Workers         int
-	AliveThreads    int
 	Retries         int
-	AliveRetries    int
 	TunnelWait      time.Duration
-	AliveTimeout    time.Duration
 	ProbeTimeout    time.Duration
 	DownloadTimeout time.Duration
 	UploadTimeout   time.Duration
@@ -52,7 +47,6 @@ type Result struct {
 }
 
 type Progress struct {
-	Stage     string
 	Total     int
 	Processed int
 	Healthy   int
@@ -66,26 +60,21 @@ type Hooks struct {
 
 type runtimeConfig struct {
 	Config
-	uploadPayload []byte
+	uploadPayload   []byte
 	parsedResolvers []parsedResolver
 }
 
 func DefaultConfig() Config {
 	return Config{
 		Engine:          "vaydns",
-		AliveName:       "cloudflare.com",
 		ProbeURL:        "http://www.google.com/gen_204",
 		DownloadURL:     "https://speed.cloudflare.com/__down?bytes=100000",
 		UploadURL:       "https://speed.cloudflare.com/__up",
-		Alive:           false,
 		Probe:           true,
 		Proxy:           "socks5h",
 		Workers:         20,
-		AliveThreads:    100,
 		Retries:         0,
-		AliveRetries:    1,
 		TunnelWait:      time.Second,
-		AliveTimeout:    2 * time.Second,
 		ProbeTimeout:    15 * time.Second,
 		DownloadTimeout: 15 * time.Second,
 		UploadTimeout:   15 * time.Second,
@@ -133,9 +122,6 @@ func normalizeAndValidateConfig(cfg Config) (Config, EngineSpec, []parsedResolve
 	if strings.TrimSpace(cfg.ProbeURL) == "" {
 		cfg.ProbeURL = defaults.ProbeURL
 	}
-	if strings.TrimSpace(cfg.AliveName) == "" {
-		cfg.AliveName = defaults.AliveName
-	}
 	if strings.TrimSpace(cfg.DownloadURL) == "" {
 		cfg.DownloadURL = defaults.DownloadURL
 	}
@@ -147,12 +133,6 @@ func normalizeAndValidateConfig(cfg Config) (Config, EngineSpec, []parsedResolve
 	}
 	if cfg.Workers == 0 {
 		cfg.Workers = defaults.Workers
-	}
-	if cfg.AliveThreads == 0 {
-		cfg.AliveThreads = defaults.AliveThreads
-	}
-	if cfg.AliveTimeout == 0 {
-		cfg.AliveTimeout = defaults.AliveTimeout
 	}
 	if cfg.ProbeTimeout == 0 {
 		cfg.ProbeTimeout = defaults.ProbeTimeout
@@ -174,7 +154,6 @@ func normalizeAndValidateConfig(cfg Config) (Config, EngineSpec, []parsedResolve
 	}
 
 	cfg.Engine = strings.ToLower(strings.TrimSpace(cfg.Engine))
-	cfg.AliveName = strings.TrimSpace(cfg.AliveName)
 	cfg.Proxy = strings.ToLower(strings.TrimSpace(cfg.Proxy))
 	cfg.Domain = strings.TrimSpace(cfg.Domain)
 	resolvers := parseResolvers(cfg.Resolvers)
@@ -205,17 +184,8 @@ func normalizeAndValidateConfig(cfg Config) (Config, EngineSpec, []parsedResolve
 	if cfg.Workers < 1 {
 		return Config{}, EngineSpec{}, nil, fmt.Errorf("workers must be >= 1")
 	}
-	if cfg.AliveThreads < 1 {
-		return Config{}, EngineSpec{}, nil, fmt.Errorf("dns threads must be >= 1")
-	}
 	if cfg.Retries < 0 {
 		return Config{}, EngineSpec{}, nil, fmt.Errorf("retries must be >= 0")
-	}
-	if cfg.AliveRetries < 0 {
-		return Config{}, EngineSpec{}, nil, fmt.Errorf("dns retries must be >= 0")
-	}
-	if cfg.AliveTimeout <= 0 {
-		return Config{}, EngineSpec{}, nil, fmt.Errorf("dns timeout must be > 0")
 	}
 	if cfg.ProbeTimeout <= 0 {
 		return Config{}, EngineSpec{}, nil, fmt.Errorf("probe timeout must be > 0")

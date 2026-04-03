@@ -26,11 +26,6 @@ var configBindings = []configBinding{
 	{key: "json", flag: "json"},
 	{key: "quiet", flag: "quiet"},
 	{key: "short", flag: "short"},
-	{key: "dns", flag: "dns"},
-	{key: "dns_name", flag: "dns-name"},
-	{key: "dns_threads", flag: "dns-threads"},
-	{key: "dns_retries", flag: "dns-retries"},
-	{key: "dns_timeout", flag: "dns-timeout"},
 	{key: "probe_url", flag: "probe-url"},
 	{key: "probe", flag: "probe"},
 	{key: "download", flag: "download"},
@@ -129,11 +124,6 @@ func setConfigDefaults(v *viper.Viper, defaults f35.Config) {
 	v.SetDefault("json", false)
 	v.SetDefault("quiet", false)
 	v.SetDefault("short", false)
-	v.SetDefault("dns", defaults.Alive)
-	v.SetDefault("dns_name", defaults.AliveName)
-	v.SetDefault("dns_threads", defaults.AliveThreads)
-	v.SetDefault("dns_retries", defaults.AliveRetries)
-	v.SetDefault("dns_timeout", int(defaults.AliveTimeout/time.Second))
 	v.SetDefault("probe_url", defaults.ProbeURL)
 	v.SetDefault("probe", defaults.Probe)
 	v.SetDefault("download", defaults.Download)
@@ -160,11 +150,9 @@ func buildConfig(v *viper.Viper) (f35.Config, cliOptions, error) {
 		Engine:          v.GetString("engine"),
 		ClientPath:      v.GetString("client_path"),
 		Domain:          v.GetString("domain"),
-		AliveName:       v.GetString("dns_name"),
 		ProbeURL:        v.GetString("probe_url"),
 		DownloadURL:     v.GetString("download_url"),
 		UploadURL:       v.GetString("upload_url"),
-		Alive:           v.GetBool("dns"),
 		Probe:           v.GetBool("probe"),
 		Download:        v.GetBool("download"),
 		Upload:          v.GetBool("upload"),
@@ -173,11 +161,8 @@ func buildConfig(v *viper.Viper) (f35.Config, cliOptions, error) {
 		ProxyUser:       v.GetString("proxy_user"),
 		ProxyPass:       v.GetString("proxy_pass"),
 		Workers:         v.GetInt("workers"),
-		AliveThreads:    v.GetInt("dns_threads"),
 		Retries:         v.GetInt("retries"),
-		AliveRetries:    v.GetInt("dns_retries"),
 		TunnelWait:      time.Duration(v.GetInt("wait")) * time.Millisecond,
-		AliveTimeout:    time.Duration(v.GetInt("dns_timeout")) * time.Second,
 		ProbeTimeout:    time.Duration(v.GetInt("probe_timeout")) * time.Second,
 		DownloadTimeout: time.Duration(v.GetInt("download_timeout")) * time.Second,
 		UploadTimeout:   time.Duration(v.GetInt("upload_timeout")) * time.Second,
@@ -222,11 +207,6 @@ func newFlagSet(defaults f35.Config) *pflag.FlagSet {
 	fs.Bool("json", false, "Print one JSON object per result line")
 	fs.Bool("quiet", false, "Suppress startup, progress, and completion logs")
 	fs.Bool("short", false, "Print only IP:PORT and latency in plain text output")
-	fs.Bool("dns", defaults.Alive, "Prefilter resolvers with a direct UDP DNS query before the E2E scan")
-	fs.String("dns-name", defaults.AliveName, "Domain name used for the DNS prefilter query")
-	fs.Int("dns-threads", defaults.AliveThreads, "Number of concurrent workers for the DNS prefilter")
-	fs.Int("dns-retries", defaults.AliveRetries, "Number of retries per resolver in the DNS prefilter")
-	fs.Int("dns-timeout", int(defaults.AliveTimeout/time.Second), "DNS prefilter timeout in seconds")
 	fs.String("probe-url", defaults.ProbeURL, "HTTP URL used for the probe request through the tunnel")
 	fs.Bool("probe", defaults.Probe, "Run a quick connectivity probe through the tunnel")
 	fs.Bool("download", defaults.Download, "Run a real download test through the tunnel")
