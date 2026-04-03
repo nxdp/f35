@@ -37,7 +37,7 @@ You need all of these:
   - `dnstt-client`
   - `slipstream-client`
   - `vaydns-client`
-- the extra flags that your tunnel client needs, passed with `-args`
+- the extra flags that your tunnel client needs, passed with `--args`
 
 ## Build
 
@@ -50,15 +50,15 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o f35 ./cmd/f35
 If you are new, start with the smallest common command:
 
 ```bash
-f35 -resolvers resolvers.txt -domain t.example.com -args '-pubkey YOUR_PUBLIC_KEY'
+f35 --resolvers resolvers.txt --domain t.example.com --args '-pubkey YOUR_PUBLIC_KEY'
 ```
 
 This uses the default engine, which is `vaydns`.
 
-On Windows PowerShell, if `vaydns-client.exe` is not in `PATH`, use `-client-path`:
+On Windows PowerShell, if `vaydns-client.exe` is not in `PATH`, use `--client-path`:
 
 ```powershell
-.\f35.exe -resolvers resolvers.txt -domain t.example.com -client-path .\vaydns-client.exe -args '-pubkey YOUR_PUBLIC_KEY'
+.\f35.exe --resolvers resolvers.txt --domain t.example.com --client-path .\vaydns-client.exe --args '-pubkey YOUR_PUBLIC_KEY'
 ```
 
 ## Config File
@@ -129,116 +129,116 @@ f35 -c f35.toml
 CLI flags override the file:
 
 ```bash
-f35 -c f35.toml -workers 50 -download
+f35 -c f35.toml --workers 50 --download
 ```
 
 ## Flags
 
-If you are new, focus on `-resolvers`, `-domain`, `-args`, `-config` or `-c`, and sometimes `-client-path`.
+If you are new, focus on `--resolvers`, `--domain`, `--args`, `--config` or `-c`, and sometimes `--client-path`.
 
-Use `-args` for tunnel-client-specific flags like `-pubkey`, and always wrap the whole value in quotes.
-Example: `-args "-pubkey YOUR_PUBLIC_KEY"`.
+Use `--args` for tunnel-client-specific flags like `-pubkey`, and always wrap the whole value in quotes.
+Example: `--args "-pubkey YOUR_PUBLIC_KEY"`.
 
 ### Required And Core Flags
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `-config`, `-c` | none | Load a TOML config file. File values become defaults and CLI flags override them. |
-| `-resolvers` | required | Path to a file containing resolver IPs. |
-| `-domain` | required | Tunnel domain to test against. |
-| `-args` | none | Extra tunnel client flags. This is where engine-specific flags like `-pubkey` go. |
-| `-engine` | `vaydns` | Tunnel client engine: `dnstt`, `slipstream`, or `vaydns`. |
-| `-client-path` | `PATH` lookup | Explicit path to the tunnel client binary if it is not in `PATH`. Useful on Windows. |
+| `--config`, `-c` | none | Load a TOML config file. File values become defaults and CLI flags override them. |
+| `--resolvers` | required | Path to a file containing resolver IPs. |
+| `--domain` | required | Tunnel domain to test against. |
+| `--args` | none | Extra tunnel client flags. This is where engine-specific flags like `-pubkey` go. |
+| `--engine` | `vaydns` | Tunnel client engine: `dnstt`, `slipstream`, or `vaydns`. |
+| `--client-path` | `PATH` lookup | Explicit path to the tunnel client binary if it is not in `PATH`. Useful on Windows. |
 
 ### Check Flags
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `-probe` | `true` | Run a quick connectivity probe through the tunnel. |
-| `-probe-url` | `http://www.google.com/gen_204` | HTTP URL used for the probe request. |
-| `-probe-timeout` | `15` | Probe request timeout in seconds. |
-| `-download` | `false` | Run a real download test through the tunnel. |
-| `-download-url` | `https://speed.cloudflare.com/__down?bytes=100000` | HTTP URL used for the download test. |
-| `-download-timeout` | `15` | Download request timeout in seconds. |
-| `-upload` | `false` | Run a real upload test through the tunnel. |
-| `-upload-url` | `https://speed.cloudflare.com/__up` | HTTP URL used for the upload test. |
-| `-upload-bytes` | `100000` | Number of bytes sent in the upload body. |
-| `-upload-timeout` | `15` | Upload request timeout in seconds. |
-| `-whois` | `false` | Look up resolver organization and country. |
-| `-whois-timeout` | `15` | Whois lookup timeout in seconds. |
+| `--probe` | `true` | Run a quick connectivity probe through the tunnel. |
+| `--probe-url` | `http://www.google.com/gen_204` | HTTP URL used for the probe request. |
+| `--probe-timeout` | `15` | Probe request timeout in seconds. |
+| `--download` | `false` | Run a real download test through the tunnel. |
+| `--download-url` | `https://speed.cloudflare.com/__down?bytes=100000` | HTTP URL used for the download test. |
+| `--download-timeout` | `15` | Download request timeout in seconds. |
+| `--upload` | `false` | Run a real upload test through the tunnel. |
+| `--upload-url` | `https://speed.cloudflare.com/__up` | HTTP URL used for the upload test. |
+| `--upload-bytes` | `100000` | Number of bytes sent in the upload body. |
+| `--upload-timeout` | `15` | Upload request timeout in seconds. |
+| `--whois` | `false` | Look up resolver organization and country. |
+| `--whois-timeout` | `15` | Whois lookup timeout in seconds. |
 
 ### Scan Settings
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `-proxy` | `socks5h` | Proxy protocol used for the HTTP request through the tunnel. Wrong values can make healthy resolvers look dead. |
-| `-proxy-user` | none | Proxy username if the tunnel exit requires authentication. |
-| `-proxy-pass` | none | Proxy password if the tunnel exit requires authentication. Requires `-proxy-user`. |
-| `-workers` | `20` | Number of concurrent E2E scan workers. |
-| `-wait` | `1000` | Milliseconds to wait for tunnel establishment before HTTP tests. |
-| `-retries` | `0` | Retry count after the first failed E2E attempt. |
-| `-start-port` | `40000` | First local listen port used for worker listener allocation. |
+| `--proxy` | `socks5h` | Proxy protocol used for the HTTP request through the tunnel. Wrong values can make healthy resolvers look dead. |
+| `--proxy-user` | none | Proxy username if the tunnel exit requires authentication. |
+| `--proxy-pass` | none | Proxy password if the tunnel exit requires authentication. Requires `--proxy-user`. |
+| `--workers` | `20` | Number of concurrent E2E scan workers. |
+| `--wait` | `1000` | Milliseconds to wait for tunnel establishment before HTTP tests. |
+| `--retries` | `0` | Retry count after the first failed E2E attempt. |
+| `--start-port` | `40000` | First local listen port used for worker listener allocation. |
 
 ### Output Flags
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `-json` | `false` | Print one JSON object per result line instead of plain text. |
-| `-short` | `false` | Print only `IP:PORT LATENCY` in plain text output. |
-| `-quiet` | `false` | Suppress startup, progress, and completion logs. |
+| `--json` | `false` | Print one JSON object per result line instead of plain text. |
+| `--short` | `false` | Print only `IP:PORT LATENCY` in plain text output. |
+| `--quiet` | `false` | Suppress startup, progress, and completion logs. |
 
 ## Timeout Tuning
 
 Use these as the main knobs:
 
-- `-wait`
+- `--wait`
   wait longer here if the tunnel starts too slowly
-- `-probe-timeout`
+- `--probe-timeout`
   raise this if the quick probe is timing out
-- `-download-timeout`
+- `--download-timeout`
   raise this if the download test starts but does not finish in time
-- `-upload-timeout`
+- `--upload-timeout`
   raise this if the upload test starts but does not finish in time
-- `-whois-timeout`
+- `--whois-timeout`
   raise this if the whois lookup is too slow
 
 Good starting values:
 
-- very large resolver list: lower `-workers` if the tunnel client starts struggling
-- slow tunnel startup: increase `-wait`
-- weak or filtered path: increase `-download-timeout`
-- weak upload path: increase `-upload-timeout`
-- slow whois API: increase `-whois-timeout`
-- only probe fails: increase `-probe-timeout`
+- very large resolver list: lower `--workers` if the tunnel client starts struggling
+- slow tunnel startup: increase `--wait`
+- weak or filtered path: increase `--download-timeout`
+- weak upload path: increase `--upload-timeout`
+- slow whois API: increase `--whois-timeout`
+- only probe fails: increase `--probe-timeout`
 
-## How `-args` Works
+## How `--args` Works
 
-`-args` is only for tunnel client flags.
+`--args` is only for tunnel client flags.
 
 Put the same flags there that you normally pass when you run the tunnel client manually.
 F35 does not replace your client config. It only fills in the resolver, listen address, and domain for you.
 
-Always wrap the whole `-args` value in quotes.
+Always wrap the whole `--args` value in quotes.
 
 - Linux and macOS:
-  `-args '-pubkey YOUR_PUBLIC_KEY'`
+  `--args '-pubkey YOUR_PUBLIC_KEY'`
 - Windows PowerShell:
-  `-args '-pubkey YOUR_PUBLIC_KEY'`
-  `-args "-pubkey YOUR_PUBLIC_KEY"` also works
+  `--args '-pubkey YOUR_PUBLIC_KEY'`
+  `--args "-pubkey YOUR_PUBLIC_KEY"` also works
 - Windows `cmd.exe`:
   use double quotes
-  `-args "-pubkey YOUR_PUBLIC_KEY"`
+  `--args "-pubkey YOUR_PUBLIC_KEY"`
 
 Examples:
 
 - DNSTT:
-  `-args '-pubkey YOUR_PUBLIC_KEY'`
+  `--args '-pubkey YOUR_PUBLIC_KEY'`
 - VayDNS:
-  `-args '-pubkey YOUR_PUBLIC_KEY -log-level info -udp-timeout 200ms'`
+  `--args '-pubkey YOUR_PUBLIC_KEY -log-level info -udp-timeout 200ms'`
 - Windows `cmd.exe`:
-  `-args "-pubkey YOUR_PUBLIC_KEY"`
+  `--args "-pubkey YOUR_PUBLIC_KEY"`
 - Windows PowerShell:
-  `-args '-pubkey YOUR_PUBLIC_KEY'`
+  `--args '-pubkey YOUR_PUBLIC_KEY'`
 
 F35 automatically fills these parts for you:
 
@@ -246,14 +246,14 @@ F35 automatically fills these parts for you:
 - local listen address
 - domain
 
-For `dnstt`, F35 places `-args` before the positional `domain` and `listen` arguments.
+For `dnstt`, F35 places `--args` before the positional `domain` and `listen` arguments.
 
 ## First Real Example
 
 If you are new, start with something like this:
 
 ```bash
-f35 -resolvers resolvers.txt -engine dnstt -domain t.example.com -proxy socks5h -args '-pubkey YOUR_PUBLIC_KEY'
+f35 --resolvers resolvers.txt --engine dnstt --domain t.example.com --proxy socks5h --args '-pubkey YOUR_PUBLIC_KEY'
 ```
 
 What this means:
@@ -269,52 +269,52 @@ What this means:
 ### DNSTT
 
 ```bash
-f35 -resolvers resolvers.txt \
-  -engine dnstt \
-  -domain t.example.com \
-  -proxy socks5h \
-  -args '-pubkey YOUR_PUBLIC_KEY'
+f35 --resolvers resolvers.txt \
+  --engine dnstt \
+  --domain t.example.com \
+  --proxy socks5h \
+  --args '-pubkey YOUR_PUBLIC_KEY'
 ```
 
 ### VayDNS
 
 ```bash
-f35 -resolvers resolvers.txt \
-  -engine vaydns \
-  -domain t.example.com \
-  -proxy socks5h \
-  -args '-pubkey YOUR_PUBLIC_KEY -record-type txt -clientid-size 1 -rps 300 -max-qname-len 99 -max-num-labels 2'
+f35 --resolvers resolvers.txt \
+  --engine vaydns \
+  --domain t.example.com \
+  --proxy socks5h \
+  --args '-pubkey YOUR_PUBLIC_KEY -record-type txt -clientid-size 1 -rps 300 -max-qname-len 99 -max-num-labels 2'
 ```
 
 ### Slipstream
 
 ```bash
-f35 -resolvers resolvers.txt \
-  -engine slipstream \
-  -domain t.example.com \
-  -proxy socks5h
+f35 --resolvers resolvers.txt \
+  --engine slipstream \
+  --domain t.example.com \
+  --proxy socks5h
 ```
 
-### Proxy Auth With `-proxy-user` And `-proxy-pass`
+### Proxy Auth With `--proxy-user` And `--proxy-pass`
 
 Use this if the proxy exposed by your tunnel requires a username and password:
 
 ```bash
-f35 -resolvers resolvers.txt \
-  -engine dnstt \
-  -domain t.example.com \
-  -proxy socks5h \
-  -proxy-user myuser \
-  -proxy-pass mypass \
-  -args '-pubkey YOUR_PUBLIC_KEY'
+f35 --resolvers resolvers.txt \
+  --engine dnstt \
+  --domain t.example.com \
+  --proxy socks5h \
+  --proxy-user myuser \
+  --proxy-pass mypass \
+  --args '-pubkey YOUR_PUBLIC_KEY'
 ```
 
-`-proxy-pass` only works together with `-proxy-user`.
+`--proxy-pass` only works together with `--proxy-user`.
 
 ### Save Only Healthy Resolvers
 
 ```bash
-f35 -resolvers resolvers.txt -engine dnstt -domain t.example.com -proxy socks5h -args '-pubkey YOUR_PUBLIC_KEY' | tee healthy.txt
+f35 --resolvers resolvers.txt --engine dnstt --domain t.example.com --proxy socks5h --args '-pubkey YOUR_PUBLIC_KEY' | tee healthy.txt
 ```
 
 ### Use A Binary That Is Not In PATH
@@ -322,19 +322,19 @@ f35 -resolvers resolvers.txt -engine dnstt -domain t.example.com -proxy socks5h 
 Linux or macOS:
 
 ```bash
-f35 -resolvers resolvers.txt -engine vaydns -domain t.example.com -proxy socks5h -client-path ./vaydns-client -args '-pubkey YOUR_PUBLIC_KEY'
+f35 --resolvers resolvers.txt --engine vaydns --domain t.example.com --proxy socks5h --client-path ./vaydns-client --args '-pubkey YOUR_PUBLIC_KEY'
 ```
 
 Windows PowerShell:
 
 ```powershell
-.\f35.exe -resolvers resolvers.txt -domain t.example.com -client-path .\vaydns-client.exe -args '-pubkey YOUR_PUBLIC_KEY'
+.\f35.exe --resolvers resolvers.txt --domain t.example.com --client-path .\vaydns-client.exe --args '-pubkey YOUR_PUBLIC_KEY'
 ```
 
 Windows full path example:
 
 ```powershell
-.\f35.exe -resolvers resolvers.txt -domain t.example.com -client-path C:\tools\vaydns-client.exe -args '-pubkey YOUR_PUBLIC_KEY'
+.\f35.exe --resolvers resolvers.txt --domain t.example.com --client-path C:\tools\vaydns-client.exe --args '-pubkey YOUR_PUBLIC_KEY'
 ```
 
 ### Make The Scan More Conservative
@@ -342,7 +342,7 @@ Windows full path example:
 This is useful when resolvers are slow but still usable.
 
 ```bash
-f35 -resolvers resolvers.txt -engine vaydns -domain t.example.com -proxy socks5h -workers 50 -wait 2000 -probe-timeout 8 -retries 2 -args '-pubkey YOUR_PUBLIC_KEY'
+f35 --resolvers resolvers.txt --engine vaydns --domain t.example.com --proxy socks5h --workers 50 --wait 2000 --probe-timeout 8 --retries 2 --args '-pubkey YOUR_PUBLIC_KEY'
 ```
 
 Meaning:
@@ -355,10 +355,10 @@ Meaning:
 ### Show Resolver Owner Info
 
 ```bash
-f35 -resolvers resolvers.txt -engine vaydns -domain t.example.com -proxy socks5h -whois -args '-pubkey YOUR_PUBLIC_KEY'
+f35 --resolvers resolvers.txt --engine vaydns --domain t.example.com --proxy socks5h --whois --args '-pubkey YOUR_PUBLIC_KEY'
 ```
 
-This keeps the enabled checks independent, and if `-whois` is enabled, plain output also includes org and country fields for that resolver IP.
+This keeps the enabled checks independent, and if `--whois` is enabled, plain output also includes org and country fields for that resolver IP.
 
 This is most useful when the resolver IP itself belongs to the network you care about.
 If your tunnel goes into a more advanced upstream chain, this extra lookup can be less meaningful.
@@ -366,16 +366,16 @@ If your tunnel goes into a more advanced upstream chain, this extra lookup can b
 ### Add Upload Testing
 
 ```bash
-f35 -resolvers resolvers.txt -engine vaydns -domain t.example.com -proxy socks5h -download -upload -args '-pubkey YOUR_PUBLIC_KEY'
+f35 --resolvers resolvers.txt --engine vaydns --domain t.example.com --proxy socks5h --download --upload --args '-pubkey YOUR_PUBLIC_KEY'
 ```
 
 This adds a real upload request to the scan and keeps it independent from the other checks.
-By default it sends `100000` bytes with a `POST`, and you can change that with `-upload-bytes`.
+By default it sends `100000` bytes with a `POST`, and you can change that with `--upload-bytes`.
 
 ### JSON Output
 
 ```bash
-f35 -resolvers resolvers.txt -engine vaydns -domain t.example.com -proxy socks5h -whois -upload -json -args '-pubkey YOUR_PUBLIC_KEY'
+f35 --resolvers resolvers.txt --engine vaydns --domain t.example.com --proxy socks5h --whois --upload --json --args '-pubkey YOUR_PUBLIC_KEY'
 ```
 
 Use this if you want to parse the output in another program.
@@ -383,12 +383,12 @@ Use this if you want to parse the output in another program.
 ## Important Note About Advanced Upstreams
 
 F35 does not generate advanced proxy protocol packets by itself.
-It only sends a normal HTTP request through the tunnel using the protocol selected with `-proxy`.
+It only sends a normal HTTP request through the tunnel using the protocol selected with `--proxy`.
 
 Examples:
 
-- if your tunnel path expects SOCKS, use `-proxy socks5` or `-proxy socks5h`
-- if your tunnel path expects HTTP proxy traffic, use `-proxy http`
+- if your tunnel path expects SOCKS, use `--proxy socks5` or `--proxy socks5h`
+- if your tunnel path expects HTTP proxy traffic, use `--proxy http`
 
 If you use something more advanced behind the tunnel, like `vless+ws`, F35 is not generating native `vless+ws` traffic.
 It is only checking whether the tunnel path can move a request and return any response.
@@ -400,13 +400,13 @@ That means:
 - whois and probe are weaker checks
 - F35 does not require HTTP `200`
 - even `400` or `404` can still prove that the tunnel is working
-- `-whois` may be less useful in those advanced chains
-- wrong `-proxy` can ruin scan results
+- `--whois` may be less useful in those advanced chains
+- wrong `--proxy` can ruin scan results
 
 ## Output
 
 By default, F35 also prints colored status logs to `stderr`.
-Use `-quiet` to silence those logs and keep only result lines on `stdout`.
+Use `--quiet` to silence those logs and keep only result lines on `stdout`.
 
 On interactive terminals, the progress status updates in place on a single line so healthy resolver output stays visible above it.
 
@@ -449,16 +449,16 @@ If you pipe the output to a file or another command, colors are not printed.
 5.6.7.8:53 2140ms download="ok" upload="fail" whois="fail" probe="ok" org="" country=""
 ```
 
-The output stays simple and the status fields always appear in the same order. When `-whois` is enabled, `org` and `country` are appended at the end.
+The output stays simple and the status fields always appear in the same order. When `--whois` is enabled, `org` and `country` are appended at the end.
 
-### Output With `-short`
+### Output With `--short`
 
 ```txt
 1.2.3.4:53 342ms
 5.6.7.8:53 89ms
 ```
 
-### Output With `-json`
+### Output With `--json`
 
 ```json
 {"resolver":"1.2.3.4:53","latency_ms":342,"download":"off","upload":"off","whois":"off","probe":"ok"}
@@ -469,11 +469,11 @@ The output stays simple and the status fields always appear in the same order. W
 
 If you do not know what to tune first, try this order:
 
-1. keep `-proxy socks5h`
-2. if output is empty, increase `-wait`
-3. if working resolvers are slow, increase `-probe-timeout`
-4. if results are unstable, lower `-workers`
-5. if some resolvers fail randomly, add `-retries 1` or `-retries 2`
+1. keep `--proxy socks5h`
+2. if output is empty, increase `--wait`
+3. if working resolvers are slow, increase `--probe-timeout`
+4. if results are unstable, lower `--workers`
+5. if some resolvers fail randomly, add `--retries 1` or `--retries 2`
 
 ## Troubleshooting
 
@@ -485,9 +485,9 @@ Fix it with one of these:
 
 - install the client
 - add it to `PATH`
-- use `-client-path /full/path/to/client`
-- on Windows, a common fix is `-client-path .\vaydns-client.exe`
-- on Windows, a full path also works, for example `-client-path C:\tools\vaydns-client.exe`
+- use `--client-path /full/path/to/client`
+- on Windows, a common fix is `--client-path .\vaydns-client.exe`
+- on Windows, a full path also works, for example `--client-path C:\tools\vaydns-client.exe`
 
 ### No Output
 
@@ -495,17 +495,17 @@ Usually one of these is wrong:
 
 - domain
 - engine
-- pubkey or other tunnel client flags inside `-args`
+- pubkey or other tunnel client flags inside `--args`
 - wait time is too short
 - probe timeout is too short
 
 Try this:
 
 ```bash
--wait 2000 -probe-timeout 8 -retries 1
+--wait 2000 --probe-timeout 8 --retries 1
 ```
 
-### `-proxy-pass requires -proxy-user`
+### `--proxy-pass requires --proxy-user`
 
 If you set a proxy password, you must also set a proxy username.
 
@@ -513,12 +513,12 @@ If you set a proxy password, you must also set a proxy username.
 
 Try:
 
-- lower `-workers`
-- increase `-wait`
-- increase `-probe-timeout`
-- add retries with `-retries`
+- lower `--workers`
+- increase `--wait`
+- increase `--probe-timeout`
+- add retries with `--retries`
 
-### I Do Not Know What To Put In `-args`
+### I Do Not Know What To Put In `--args`
 
 Put the same client flags you normally use when running your tunnel client manually.
 

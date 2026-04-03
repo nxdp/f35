@@ -83,7 +83,7 @@ func newConfig(fs *pflag.FlagSet, defaults f35.Config) (*viper.Viper, error) {
 
 	configPath, err := fs.GetString("config")
 	if err != nil {
-		return nil, fmt.Errorf("read -config: %w", err)
+		return nil, fmt.Errorf("read --config: %w", err)
 	}
 	configPath = strings.TrimSpace(configPath)
 	if configPath != "" {
@@ -180,13 +180,13 @@ func buildConfig(v *viper.Viper) (f35.Config, cliOptions, error) {
 	}
 
 	if opts.resolversFile == "" || strings.TrimSpace(cfg.Domain) == "" {
-		return f35.Config{}, cliOptions{}, fmt.Errorf("-resolvers and -domain are required")
+		return f35.Config{}, cliOptions{}, fmt.Errorf("--resolvers and --domain are required")
 	}
 
 	if opts.args != "" {
 		extraArgs, err := splitCommandLine(opts.args)
 		if err != nil {
-			return f35.Config{}, cliOptions{}, fmt.Errorf("invalid -args: %w", err)
+			return f35.Config{}, cliOptions{}, fmt.Errorf("invalid --args: %w", err)
 		}
 		cfg.ExtraArgs = extraArgs
 	}
