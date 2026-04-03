@@ -61,12 +61,124 @@ On Windows PowerShell, if `vaydns-client.exe` is not in `PATH`, use `-p`:
 .\f35.exe -r resolvers.txt -d t.example.com -p .\vaydns-client.exe -a '-pubkey YOUR_PUBLIC_KEY'
 ```
 
+## Config File
+
+If you do not want to pass many flags every time, use a TOML config file.
+Use flat keys with underscores, like `download_timeout` and `start_port`:
+
+If you are new, this is the easiest way to use F35.
+Write your settings once, then run `f35 -config f35.toml`.
+For repeated scans, prefer a config file over a long flag list.
+
+```toml
+resolvers_file = "resolvers.txt"
+engine = "vaydns"
+domain = "t.example.com"
+args = "-pubkey YOUR_PUBLIC_KEY"
+
+dns = true
+dns_name = "cloudflare.com"
+probe = true
+download = false
+upload = false
+whois = false
+
+workers = 20
+retries = 0
+wait = 1000
+probe_timeout = 15
+download_timeout = 15
+upload_timeout = 15
+whois_timeout = 15
+```
+
+Run it like this:
+
+```bash
+f35 -config f35.toml
+```
+
+CLI flags override the file:
+
+```bash
+f35 -config f35.toml -w 50 -download
+```
+
+### Full Config Example
+
+Use this as a starting point and remove the parts you do not need:
+
+```toml
+resolvers_file = "resolvers.txt"
+engine = "vaydns"
+client_path = "./vaydns-client"
+domain = "t.example.com"
+args = "-pubkey YOUR_PUBLIC_KEY"
+
+dns = true
+dns_name = "cloudflare.com"
+dns_timeout = 2
+dns_retries = 1
+dns_threads = 1000
+
+probe = true
+probe_url = "http://www.google.com/gen_204"
+probe_timeout = 15
+
+download = false
+download_url = "https://speed.cloudflare.com/__down?bytes=100000"
+download_timeout = 15
+
+upload = false
+upload_url = "https://speed.cloudflare.com/__up"
+upload_bytes = 100000
+upload_timeout = 15
+
+whois = false
+whois_timeout = 15
+
+proxy = "socks5h"
+proxy_user = ""
+proxy_pass = ""
+
+workers = 20
+retries = 0
+wait = 1000
+start_port = 40000
+
+json = false
+short = false
+quiet = false
+```
+
+What to edit first:
+
+- `resolvers_file`
+  your resolver list file
+- `domain`
+  your tunnel domain
+- `args`
+  your tunnel client flags, usually including the public key
+- `client_path`
+  set this if the client binary is not in `PATH`
+- `dns`
+  enable this for large resolver lists to prefilter them quickly
+
+Simple run:
+
+```bash
+f35 -config f35.toml
+```
+
 ## Flags
 
-If you are new, focus on `-r`, `-d`, `-a`, and sometimes `-p`.
+If you are new, focus on `-r`, `-d`, `-a`, `-config`, and sometimes `-p`.
 
 ### Required For Most Runs
 
+- `-config`
+  path to a TOML config file
+  file values become defaults and CLI flags override them
 - `-r`
   file that contains resolver IPs
 - `-d`

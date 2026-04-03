@@ -3,6 +3,7 @@ module github.com/nxdp/f35
 go 1.25.5
 
 require (
+	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/sirupsen/logrus v1.9.3
 	github.com/zmap/dns v1.1.67
 	github.com/zmap/zdns/v2 v2.0.5
