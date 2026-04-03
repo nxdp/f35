@@ -35,12 +35,13 @@ func Scan(cfg Config, hooks Hooks) error {
 		if err != nil {
 			return err
 		}
-		runtime.Resolvers = aliveResolvers
-		if len(runtime.Resolvers) == 0 {
+		runtime.parsedResolvers = aliveResolvers
+		runtime.Resolvers = resolverAddrs(aliveResolvers)
+		if len(runtime.parsedResolvers) == 0 {
 			return nil
 		}
 		if hooks.OnProgress != nil {
-			hooks.OnProgress(Progress{Stage: progressStageE2E, Total: len(runtime.Resolvers)})
+			hooks.OnProgress(Progress{Stage: progressStageE2E, Total: len(runtime.parsedResolvers)})
 		}
 	}
 
@@ -48,8 +49,8 @@ func Scan(cfg Config, hooks Hooks) error {
 }
 
 func scanResolvers(runtime *runtimeConfig, hooks Hooks) error {
-	total := len(runtime.Resolvers)
-	jobs := make(chan string, runtime.Workers*2)
+	total := len(runtime.parsedResolvers)
+	jobs := make(chan parsedResolver, runtime.Workers*2)
 	stats := newScanStats(progressStageE2E, total)
 
 	var wg sync.WaitGroup
@@ -61,7 +62,7 @@ func scanResolvers(runtime *runtimeConfig, hooks Hooks) error {
 		}(runtime.StartPort + i)
 	}
 
-	for _, resolver := range runtime.Resolvers {
+	for _, resolver := range runtime.parsedResolvers {
 		jobs <- resolver
 	}
 	close(jobs)
@@ -70,7 +71,7 @@ func scanResolvers(runtime *runtimeConfig, hooks Hooks) error {
 	return nil
 }
 
-func worker(port int, cfg *runtimeConfig, jobs <-chan string, hooks Hooks, stats *scanStats) {
+func worker(port int, cfg *runtimeConfig, jobs <-chan parsedResolver, hooks Hooks, stats *scanStats) {
 	proxyURL := &url.URL{
 		Scheme: cfg.Proxy,
 		Host:   net.JoinHostPort("127.0.0.1", strconv.Itoa(port)),
@@ -128,8 +129,8 @@ func (s *scanStats) Record(success bool) Progress {
 	}
 }
 
-func tryResolver(resolver string, port int, cfg *runtimeConfig, client *http.Client) (Result, bool) {
-	args, err := buildEngineArgs(cfg, resolver, port)
+func tryResolver(resolver parsedResolver, port int, cfg *runtimeConfig, client *http.Client) (Result, bool) {
+	args, err := buildEngineArgs(cfg, resolver.addr, port)
 	if err != nil {
 		return Result{}, false
 	}
@@ -149,7 +150,7 @@ func tryResolver(resolver string, port int, cfg *runtimeConfig, client *http.Cli
 	time.Sleep(cfg.TunnelWait)
 
 	result := Result{
-		Resolver: resolver,
+		Resolver: resolver.addr,
 		Download: "off",
 		Upload:   "off",
 		Whois:    "off",
@@ -182,7 +183,7 @@ func tryResolver(resolver string, port int, cfg *runtimeConfig, client *http.Cli
 
 	if cfg.Whois {
 		result.Whois = "fail"
-		latency, org, country, ok := lookupResolverInfo(client, resolver, cfg.WhoisTimeout)
+		latency, org, country, ok := lookupResolverInfo(client, resolver.ip.String(), cfg.WhoisTimeout)
 		if ok {
 			result.Whois = "ok"
 			result.Org = org

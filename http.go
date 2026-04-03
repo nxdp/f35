@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -66,16 +65,11 @@ func doUploadCheck(client *http.Client, targetURL string, timeout time.Duration,
 	return time.Since(startedAt).Milliseconds(), true
 }
 
-func lookupResolverInfo(client *http.Client, resolver string, timeout time.Duration) (int64, string, string, bool) {
-	host, _, err := net.SplitHostPort(resolver)
-	if err != nil {
-		return 0, "unknown", "unknown", false
-	}
-
+func lookupResolverInfo(client *http.Client, resolverHost string, timeout time.Duration) (int64, string, string, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, whoisURL+"/"+host, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, whoisURL+"/"+resolverHost, nil)
 	if err != nil {
 		return 0, "unknown", "unknown", false
 	}

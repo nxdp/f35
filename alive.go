@@ -2,8 +2,6 @@ package f35
 
 import (
 	"context"
-	"net"
-	"strconv"
 	"sync"
 
 	log "github.com/sirupsen/logrus"
@@ -11,8 +9,8 @@ import (
 	"github.com/zmap/zdns/v2/src/zdns"
 )
 
-func filterAliveResolvers(cfg *runtimeConfig, hooks Hooks) ([]string, error) {
-	total := len(cfg.Resolvers)
+func filterAliveResolvers(cfg *runtimeConfig, hooks Hooks) ([]parsedResolver, error) {
+	total := len(cfg.parsedResolvers)
 	if total == 0 {
 		return nil, nil
 	}
@@ -23,7 +21,7 @@ func filterAliveResolvers(cfg *runtimeConfig, hooks Hooks) ([]string, error) {
 	}
 
 	resolverConfig := newAliveResolverConfig(cfg)
-	jobs := make(chan string, workerCount*2)
+	jobs := make(chan parsedResolver, workerCount*2)
 	stats := newScanStats(progressStageAlive, total)
 	resolvers := make([]*zdns.Resolver, 0, workerCount)
 	for i := 0; i < workerCount; i++ {
@@ -37,25 +35,28 @@ func filterAliveResolvers(cfg *runtimeConfig, hooks Hooks) ([]string, error) {
 		resolvers = append(resolvers, resolver)
 	}
 
-	aliveResolvers := make([]string, 0, total)
-	var aliveMu sync.Mutex
-
 	var wg sync.WaitGroup
-	for _, resolver := range resolvers {
+	workerResults := make([][]parsedResolver, len(resolvers))
+	for i, resolver := range resolvers {
 		wg.Add(1)
-		go func(resolver *zdns.Resolver) {
+		go func(index int, resolver *zdns.Resolver) {
 			defer wg.Done()
 			defer resolver.Close()
-			aliveWorker(resolver, cfg, jobs, &aliveResolvers, &aliveMu, hooks, stats)
-		}(resolver)
+			workerResults[index] = aliveWorker(resolver, cfg, jobs, hooks, stats)
+		}(i, resolver)
 	}
 
-	for _, resolver := range cfg.Resolvers {
+	for _, resolver := range cfg.parsedResolvers {
 		jobs <- resolver
 	}
 	close(jobs)
 
 	wg.Wait()
+
+	aliveResolvers := make([]parsedResolver, 0, total)
+	for _, results := range workerResults {
+		aliveResolvers = append(aliveResolvers, results...)
+	}
 
 	return aliveResolvers, nil
 }
@@ -71,13 +72,14 @@ func newAliveResolverConfig(cfg *runtimeConfig) *zdns.ResolverConfig {
 	return resolverConfig
 }
 
-func aliveWorker(resolver *zdns.Resolver, cfg *runtimeConfig, jobs <-chan string, aliveResolvers *[]string, aliveMu *sync.Mutex, hooks Hooks, stats *scanStats) {
-	for resolverAddr := range jobs {
-		alive := isResolverAlive(resolver, resolverAddr, cfg.AliveName)
+func aliveWorker(resolver *zdns.Resolver, cfg *runtimeConfig, jobs <-chan parsedResolver, hooks Hooks, stats *scanStats) []parsedResolver {
+	aliveResolvers := make([]parsedResolver, 0)
+	question := zdns.Question{Name: cfg.AliveName, Type: dns.TypeA, Class: dns.ClassINET}
+
+	for target := range jobs {
+		alive := isResolverAlive(resolver, &question, target)
 		if alive {
-			aliveMu.Lock()
-			*aliveResolvers = append(*aliveResolvers, resolverAddr)
-			aliveMu.Unlock()
+			aliveResolvers = append(aliveResolvers, target)
 		}
 
 		progress := stats.Record(alive)
@@ -85,37 +87,21 @@ func aliveWorker(resolver *zdns.Resolver, cfg *runtimeConfig, jobs <-chan string
 			hooks.OnProgress(progress)
 		}
 	}
+
+	return aliveResolvers
 }
 
-func isResolverAlive(resolver *zdns.Resolver, resolverAddr string, lookupName string) bool {
-	nameServer, err := parseAliveNameServer(resolverAddr)
-	if err != nil {
-		return false
+func isResolverAlive(resolver *zdns.Resolver, question *zdns.Question, target parsedResolver) bool {
+	nameServer := zdns.NameServer{
+		IP:   target.ip,
+		Port: target.port,
 	}
-
 	_, _, status, err := resolver.ExternalLookup(
 		context.Background(),
-		&zdns.Question{Name: lookupName, Type: dns.TypeA, Class: dns.ClassINET},
-		nameServer,
+		question,
+		&nameServer,
 	)
 	return isAliveStatus(status, err)
-}
-
-func parseAliveNameServer(resolverAddr string) (*zdns.NameServer, error) {
-	host, portString, err := net.SplitHostPort(resolverAddr)
-	if err != nil {
-		return nil, err
-	}
-
-	port, err := strconv.ParseUint(portString, 10, 16)
-	if err != nil {
-		return nil, err
-	}
-
-	return &zdns.NameServer{
-		IP:   net.ParseIP(host),
-		Port: uint16(port),
-	}, nil
 }
 
 func isAliveStatus(status zdns.Status, err error) bool {

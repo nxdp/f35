@@ -67,44 +67,8 @@ If you do not want to pass many flags every time, use a TOML config file.
 Use flat keys with underscores, like `download_timeout` and `start_port`:
 
 If you are new, this is the easiest way to use F35.
-Write your settings once, then run `f35 -config f35.toml`.
+Write your settings once, then run `f35 -c f35.toml`.
 For repeated scans, prefer a config file over a long flag list.
-
-```toml
-resolvers_file = "resolvers.txt"
-engine = "vaydns"
-domain = "t.example.com"
-args = "-pubkey YOUR_PUBLIC_KEY"
-
-dns = true
-dns_name = "cloudflare.com"
-probe = true
-download = false
-upload = false
-whois = false
-
-workers = 20
-retries = 0
-wait = 1000
-probe_timeout = 15
-download_timeout = 15
-upload_timeout = 15
-whois_timeout = 15
-```
-
-Run it like this:
-
-```bash
-f35 -config f35.toml
-```
-
-CLI flags override the file:
-
-```bash
-f35 -config f35.toml -workers 50 -download
-```
-
-### Full Config Example
 
 Use this as a starting point and remove the parts you do not need:
 
@@ -119,7 +83,7 @@ dns = true
 dns_name = "cloudflare.com"
 dns_timeout = 2
 dns_retries = 1
-dns_threads = 1000
+dns_threads = 100
 
 probe = true
 probe_url = "http://www.google.com/gen_204"
@@ -167,18 +131,25 @@ What to edit first:
 Simple run:
 
 ```bash
-f35 -config f35.toml
+f35 -c f35.toml
+```
+
+CLI flags override the file:
+
+```bash
+f35 -c f35.toml -workers 50 -download
 ```
 
 ## Flags
 
-If you are new, focus on `-resolvers`, `-domain`, `-args`, `-config`, and sometimes `-client-path`.
+If you are new, focus on `-resolvers`, `-domain`, `-args`, `-config` or `-c`, and sometimes `-client-path`.
 
 ### Required For Most Runs
 
 - `-config`
   path to a TOML config file
   file values become defaults and CLI flags override them
+  short alias: `-c`
 - `-resolvers`
   file that contains resolver IPs
 - `-domain`
@@ -217,14 +188,14 @@ If you are new, focus on `-resolvers`, `-domain`, `-args`, `-config`, and someti
   default is `1`
 - `-dns-threads`
   number of concurrent workers used by the DNS prefilter
-  default is `1000`
+  default is `100`
 - `-probe`
   run a quick connectivity probe through the tunnel
   enabled by default
 - `-probe-url`
   HTTP URL used for the probe request
   default is `http://www.google.com/gen_204`
-- `-timeout`
+- `-probe-timeout`
   probe request timeout in seconds
   default is `15`
 - `-download`
@@ -294,7 +265,7 @@ Use these as the main knobs:
   wait longer here if the tunnel starts too slowly
 - `-dns-timeout`
   raise this if the DNS prefilter is missing resolvers that should answer DNS
-- `-timeout`
+- `-probe-timeout`
   raise this if the quick probe is timing out
 - `-download-timeout`
   raise this if the download test starts but does not finish in time
@@ -311,7 +282,7 @@ Good starting values:
 - weak or filtered path: increase `-download-timeout`
 - weak upload path: increase `-upload-timeout`
 - slow whois API: increase `-whois-timeout`
-- only probe fails: increase `-timeout`
+- only probe fails: increase `-probe-timeout`
 
 ## How `-args` Works
 
@@ -385,7 +356,7 @@ f35 -resolvers resolvers.txt \
   -engine vaydns \
   -domain t.example.com \
   -proxy socks5h \
-  -args '-pubkey YOUR_PUBLIC_KEY -log-level info -udp-timeout 200ms -open-stream-timeout 7s -idle-timeout 10s -keepalive 2s -udp-workers 200 -rps 300 -max-streams 0 -max-qname-len 101 -max-num-labels 2'
+  -args '-pubkey YOUR_PUBLIC_KEY -record-type txt -clientid-size 1 -rps 300 -max-qname-len 99 -max-num-labels 2'
 ```
 
 ### Slipstream
@@ -444,7 +415,7 @@ Windows full path example:
 This is useful when resolvers are slow but still usable.
 
 ```bash
-f35 -resolvers resolvers.txt -engine vaydns -domain t.example.com -proxy socks5h -workers 50 -wait 2000 -timeout 8 -retries 2 -args '-pubkey YOUR_PUBLIC_KEY'
+f35 -resolvers resolvers.txt -engine vaydns -domain t.example.com -proxy socks5h -workers 50 -wait 2000 -probe-timeout 8 -retries 2 -args '-pubkey YOUR_PUBLIC_KEY'
 ```
 
 Meaning:
@@ -583,7 +554,7 @@ If you do not know what to tune first, try this order:
 
 1. keep `-proxy socks5h`
 2. if output is empty, increase `-wait`
-3. if working resolvers are slow, increase `-timeout`
+3. if working resolvers are slow, increase `-probe-timeout`
 4. if results are unstable, lower `-workers`
 5. if some resolvers fail randomly, add `-retries 1` or `-retries 2`
 
@@ -609,12 +580,12 @@ Usually one of these is wrong:
 - engine
 - pubkey or other tunnel client flags inside `-args`
 - wait time is too short
-- timeout is too short
+- probe timeout is too short
 
 Try this:
 
 ```bash
--wait 2000 -timeout 8 -retries 1
+-wait 2000 -probe-timeout 8 -retries 1
 ```
 
 ### `-proxy-pass requires -proxy-user`
@@ -627,7 +598,7 @@ Try:
 
 - lower `-workers`
 - increase `-wait`
-- increase `-timeout`
+- increase `-probe-timeout`
 - add retries with `-retries`
 
 ### I Do Not Know What To Put In `-args`

@@ -67,6 +67,7 @@ type Hooks struct {
 type runtimeConfig struct {
 	Config
 	uploadPayload []byte
+	parsedResolvers []parsedResolver
 }
 
 func DefaultConfig() Config {
@@ -80,7 +81,7 @@ func DefaultConfig() Config {
 		Probe:           true,
 		Proxy:           "socks5h",
 		Workers:         20,
-		AliveThreads:    1000,
+		AliveThreads:    100,
 		Retries:         0,
 		AliveRetries:    1,
 		TunnelWait:      time.Second,
@@ -95,12 +96,12 @@ func DefaultConfig() Config {
 }
 
 func ValidateConfig(cfg Config) error {
-	_, _, err := normalizeAndValidateConfig(cfg)
+	_, _, _, err := normalizeAndValidateConfig(cfg)
 	return err
 }
 
 func prepareConfig(cfg Config) (runtimeConfig, error) {
-	cfg, spec, err := normalizeAndValidateConfig(cfg)
+	cfg, spec, resolvers, err := normalizeAndValidateConfig(cfg)
 	if err != nil {
 		return runtimeConfig{}, err
 	}
@@ -113,14 +114,17 @@ func prepareConfig(cfg Config) (runtimeConfig, error) {
 		cfg.ClientPath = path
 	}
 
-	runtime := runtimeConfig{Config: cfg}
+	runtime := runtimeConfig{
+		Config:          cfg,
+		parsedResolvers: resolvers,
+	}
 	if cfg.Upload {
 		runtime.uploadPayload = bytes.Repeat([]byte("0"), cfg.UploadBytes)
 	}
 	return runtime, nil
 }
 
-func normalizeAndValidateConfig(cfg Config) (Config, EngineSpec, error) {
+func normalizeAndValidateConfig(cfg Config) (Config, EngineSpec, []parsedResolver, error) {
 	defaults := DefaultConfig()
 
 	if strings.TrimSpace(cfg.Engine) == "" {
@@ -173,69 +177,70 @@ func normalizeAndValidateConfig(cfg Config) (Config, EngineSpec, error) {
 	cfg.AliveName = strings.TrimSpace(cfg.AliveName)
 	cfg.Proxy = strings.ToLower(strings.TrimSpace(cfg.Proxy))
 	cfg.Domain = strings.TrimSpace(cfg.Domain)
-	cfg.Resolvers = normalizeResolvers(cfg.Resolvers)
+	resolvers := parseResolvers(cfg.Resolvers)
+	cfg.Resolvers = resolverAddrs(resolvers)
 
 	if cfg.Domain == "" || len(cfg.Resolvers) == 0 {
-		return Config{}, EngineSpec{}, fmt.Errorf("domain and at least one resolver are required")
+		return Config{}, EngineSpec{}, nil, fmt.Errorf("domain and at least one resolver are required")
 	}
 
 	spec, ok := engineSpecs[cfg.Engine]
 	if !ok {
-		return Config{}, EngineSpec{}, fmt.Errorf("engine must be one of: %s", strings.Join(SupportedEngines(), ", "))
+		return Config{}, EngineSpec{}, nil, fmt.Errorf("engine must be one of: %s", strings.Join(SupportedEngines(), ", "))
 	}
 
 	switch cfg.Proxy {
 	case "http", "https", "socks5", "socks5h":
 	default:
-		return Config{}, EngineSpec{}, fmt.Errorf("proxy must be one of: http, https, socks5, socks5h")
+		return Config{}, EngineSpec{}, nil, fmt.Errorf("proxy must be one of: http, https, socks5, socks5h")
 	}
 
 	if cfg.ProxyPass != "" && cfg.ProxyUser == "" {
-		return Config{}, EngineSpec{}, fmt.Errorf("proxy password requires proxy user")
+		return Config{}, EngineSpec{}, nil, fmt.Errorf("proxy password requires proxy user")
 	}
 	if !cfg.Probe && !cfg.Download && !cfg.Upload && !cfg.Whois {
-		return Config{}, EngineSpec{}, fmt.Errorf("at least one of probe, download, upload, or whois must be enabled")
+		return Config{}, EngineSpec{}, nil, fmt.Errorf("at least one of probe, download, upload, or whois must be enabled")
 	}
 
 	if cfg.Workers < 1 {
-		return Config{}, EngineSpec{}, fmt.Errorf("workers must be >= 1")
+		return Config{}, EngineSpec{}, nil, fmt.Errorf("workers must be >= 1")
 	}
 	if cfg.AliveThreads < 1 {
-		return Config{}, EngineSpec{}, fmt.Errorf("dns threads must be >= 1")
+		return Config{}, EngineSpec{}, nil, fmt.Errorf("dns threads must be >= 1")
 	}
 	if cfg.Retries < 0 {
-		return Config{}, EngineSpec{}, fmt.Errorf("retries must be >= 0")
+		return Config{}, EngineSpec{}, nil, fmt.Errorf("retries must be >= 0")
 	}
 	if cfg.AliveRetries < 0 {
-		return Config{}, EngineSpec{}, fmt.Errorf("dns retries must be >= 0")
+		return Config{}, EngineSpec{}, nil, fmt.Errorf("dns retries must be >= 0")
 	}
 	if cfg.AliveTimeout <= 0 {
-		return Config{}, EngineSpec{}, fmt.Errorf("dns timeout must be > 0")
+		return Config{}, EngineSpec{}, nil, fmt.Errorf("dns timeout must be > 0")
 	}
 	if cfg.ProbeTimeout <= 0 {
-		return Config{}, EngineSpec{}, fmt.Errorf("probe timeout must be > 0")
+		return Config{}, EngineSpec{}, nil, fmt.Errorf("probe timeout must be > 0")
 	}
 	if cfg.DownloadTimeout <= 0 {
-		return Config{}, EngineSpec{}, fmt.Errorf("download timeout must be > 0")
+		return Config{}, EngineSpec{}, nil, fmt.Errorf("download timeout must be > 0")
 	}
 	if cfg.UploadTimeout <= 0 {
-		return Config{}, EngineSpec{}, fmt.Errorf("upload timeout must be > 0")
+		return Config{}, EngineSpec{}, nil, fmt.Errorf("upload timeout must be > 0")
 	}
 	if cfg.UploadBytes < 1 {
-		return Config{}, EngineSpec{}, fmt.Errorf("upload bytes must be >= 1")
+		return Config{}, EngineSpec{}, nil, fmt.Errorf("upload bytes must be >= 1")
 	}
 	if cfg.WhoisTimeout <= 0 {
-		return Config{}, EngineSpec{}, fmt.Errorf("whois timeout must be > 0")
+		return Config{}, EngineSpec{}, nil, fmt.Errorf("whois timeout must be > 0")
 	}
 	if cfg.TunnelWait < 0 {
-		return Config{}, EngineSpec{}, fmt.Errorf("tunnel wait must be >= 0")
+		return Config{}, EngineSpec{}, nil, fmt.Errorf("tunnel wait must be >= 0")
 	}
 	if cfg.StartPort < 1 || cfg.StartPort > 65535 {
-		return Config{}, EngineSpec{}, fmt.Errorf("start port must be between 1 and 65535")
+		return Config{}, EngineSpec{}, nil, fmt.Errorf("start port must be between 1 and 65535")
 	}
 	if cfg.StartPort+cfg.Workers-1 > 65535 {
-		return Config{}, EngineSpec{}, fmt.Errorf("port range overflow (start port + workers exceeds 65535)")
+		return Config{}, EngineSpec{}, nil, fmt.Errorf("port range overflow (start port + workers exceeds 65535)")
 	}
 
-	return cfg, spec, nil
+	return cfg, spec, resolvers, nil
 }
