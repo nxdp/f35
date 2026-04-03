@@ -62,10 +62,14 @@ func run() error {
 
 	startedAt := time.Now()
 	ui := newStatusUI(opts, startedAt, len(cfg.Resolvers))
+	initialStage := "e2e"
+	if cfg.Alive {
+		initialStage = "alive"
+	}
+	ui.UpdateProgress(f35.Progress{Stage: initialStage, Total: len(cfg.Resolvers)})
 
 	if !opts.quiet {
 		ui.Log("INFO", "starting | resolvers=%d | workers=%d | engine=%s", len(cfg.Resolvers), cfg.Workers, cfg.Engine)
-		ui.Log("INFO", "config | checks=%s | wait=%dms | timeouts=%s", enabledChecks(cfg), cfg.TunnelWait.Milliseconds(), enabledTimeouts(cfg))
 	}
 
 	var stopProgress func()
@@ -92,11 +96,12 @@ func run() error {
 
 	if !opts.quiet {
 		progress := ui.Progress()
+		primaryLabel := progressPrimaryLabel(progress.Stage)
 		level := "INFO"
 		if progress.Healthy == 0 {
 			level = "WARN"
 		}
-		ui.Log(level, "completed | %d/%d | healthy=%d | failed=%d | elapsed=%s", progress.Processed, progress.Total, progress.Healthy, progress.Failed, formatElapsed(time.Since(startedAt)))
+		ui.Log(level, "completed | %d/%d | %s=%d | failed=%d | elapsed=%s", progress.Processed, progress.Total, primaryLabel, progress.Healthy, progress.Failed, formatElapsed(time.Since(startedAt)))
 	}
 
 	return nil
@@ -106,6 +111,7 @@ func parseFlags() (f35.Config, cliOptions, error) {
 	cfg := f35.DefaultConfig()
 	opts := cliOptions{}
 
+	dnsTimeout := int(cfg.AliveTimeout / time.Second)
 	probeTimeout := int(cfg.ProbeTimeout / time.Second)
 	downloadTimeout := int(cfg.DownloadTimeout / time.Second)
 	uploadTimeout := int(cfg.UploadTimeout / time.Second)
@@ -120,6 +126,11 @@ func parseFlags() (f35.Config, cliOptions, error) {
 	flag.BoolVar(&opts.json, "json", false, "Print one JSON object per result line")
 	flag.BoolVar(&opts.quiet, "q", false, "Suppress startup, progress, and completion logs")
 	flag.BoolVar(&opts.short, "short", false, "Print only IP:PORT and latency in plain text output")
+	flag.BoolVar(&cfg.Alive, "dns", false, "Prefilter resolvers with a direct UDP DNS query before the E2E scan")
+	flag.StringVar(&cfg.AliveName, "dns-name", cfg.AliveName, "Domain name used for the DNS prefilter query")
+	flag.IntVar(&cfg.AliveThreads, "dns-threads", cfg.AliveThreads, "Number of concurrent workers for the DNS prefilter")
+	flag.IntVar(&cfg.AliveRetries, "dns-retries", cfg.AliveRetries, "Number of retries per resolver in the DNS prefilter")
+	flag.IntVar(&dnsTimeout, "dns-timeout", dnsTimeout, "DNS prefilter timeout in seconds")
 	flag.StringVar(&cfg.ProbeURL, "u", cfg.ProbeURL, "HTTP URL used for the probe request through the tunnel")
 	flag.BoolVar(&cfg.Probe, "probe", cfg.Probe, "Run a quick connectivity probe through the tunnel")
 	flag.BoolVar(&cfg.Download, "download", false, "Run a real download test through the tunnel")
@@ -155,6 +166,7 @@ func parseFlags() (f35.Config, cliOptions, error) {
 	}
 
 	cfg.TunnelWait = time.Duration(tunnelWait) * time.Millisecond
+	cfg.AliveTimeout = time.Duration(dnsTimeout) * time.Second
 	cfg.ProbeTimeout = time.Duration(probeTimeout) * time.Second
 	cfg.DownloadTimeout = time.Duration(downloadTimeout) * time.Second
 	cfg.UploadTimeout = time.Duration(uploadTimeout) * time.Second
@@ -275,10 +287,12 @@ func (ui *statusUI) renderProgressLocked() {
 	}
 	_, _ = fmt.Fprintf(
 		os.Stderr,
-		"\r\033[K%s %d/%d | healthy=%d | failed=%d | elapsed=%s",
+		"\r\033[K%s %s %d/%d | %s=%d | failed=%d | elapsed=%s",
 		formatLogLevel("INFO", ui.colorize),
+		progressStage(ui.progress.Stage),
 		ui.progress.Processed,
 		ui.progress.Total,
+		progressPrimaryLabel(ui.progress.Stage),
 		ui.progress.Healthy,
 		ui.progress.Failed,
 		formatElapsed(time.Since(ui.startedAt)),
@@ -286,38 +300,15 @@ func (ui *statusUI) renderProgressLocked() {
 	ui.progressSeen = true
 }
 
-func enabledChecks(cfg f35.Config) string {
-	checks := make([]string, 0, 4)
-	if cfg.Probe {
-		checks = append(checks, "probe")
+func progressStage(stage string) string {
+	if stage == "alive" {
+		return "dns"
 	}
-	if cfg.Download {
-		checks = append(checks, "download")
-	}
-	if cfg.Upload {
-		checks = append(checks, "upload")
-	}
-	if cfg.Whois {
-		checks = append(checks, "whois")
-	}
-	return strings.Join(checks, ",")
+	return "e2e"
 }
 
-func enabledTimeouts(cfg f35.Config) string {
-	parts := make([]string, 0, 4)
-	if cfg.Probe {
-		parts = append(parts, fmt.Sprintf("probe=%ds", int(cfg.ProbeTimeout/time.Second)))
-	}
-	if cfg.Download {
-		parts = append(parts, fmt.Sprintf("download=%ds", int(cfg.DownloadTimeout/time.Second)))
-	}
-	if cfg.Upload {
-		parts = append(parts, fmt.Sprintf("upload=%ds", int(cfg.UploadTimeout/time.Second)))
-	}
-	if cfg.Whois {
-		parts = append(parts, fmt.Sprintf("whois=%ds", int(cfg.WhoisTimeout/time.Second)))
-	}
-	return strings.Join(parts, ",")
+func progressPrimaryLabel(stage string) string {
+	return "healthy"
 }
 
 func formatPlainTextResult(result f35.Result, colorize bool) string {

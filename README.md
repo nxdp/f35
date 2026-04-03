@@ -90,6 +90,22 @@ If you are new, focus on `-r`, `-d`, `-a`, and sometimes `-p`.
 
 ### Checks
 
+- `-dns`
+  run a fast UDP DNS prefilter before the E2E scan
+  this only checks whether the resolver answers a simple DNS query
+  it does not prove the tunnel is usable
+- `-dns-name`
+  domain name used for the DNS prefilter query
+  default is `cloudflare.com`
+- `-dns-timeout`
+  timeout in seconds for the DNS prefilter
+  default is `2`
+- `-dns-retries`
+  number of retries per resolver in the DNS prefilter
+  default is `1`
+- `-dns-threads`
+  number of concurrent workers used by the DNS prefilter
+  default is `1000`
 - `-probe`
   run a quick connectivity probe through the tunnel
   enabled by default
@@ -164,6 +180,8 @@ Use these as the main knobs:
 
 - `-s`
   wait longer here if the tunnel starts too slowly
+- `-dns-timeout`
+  raise this if the DNS prefilter is missing resolvers that should answer DNS
 - `-t`
   raise this if the quick probe is timing out
 - `-download-timeout`
@@ -175,7 +193,9 @@ Use these as the main knobs:
 
 Good starting values:
 
+- very large resolver list: enable `-dns`
 - slow tunnel startup: increase `-s`
+- slow DNS responses in prefilter: increase `-dns-timeout`
 - weak or filtered path: increase `-download-timeout`
 - weak upload path: increase `-upload-timeout`
 - slow whois API: increase `-whois-timeout`
@@ -342,6 +362,15 @@ f35 -r resolvers.txt -e vaydns -d t.example.com -x socks5h -download -upload -a 
 This adds a real upload request to the scan and keeps it independent from the other checks.
 By default it sends `100000` bytes with a `POST`, and you can change that with `-upload-bytes`.
 
+### Use The DNS Prefilter First
+
+```bash
+f35 -r resolvers.txt -d t.example.com -dns -a '-pubkey YOUR_PUBLIC_KEY'
+```
+
+This first sends a fast UDP DNS query to each resolver using `cloudflare.com`.
+Only resolvers that answer move on to the real E2E tunnel scan.
+
 ### JSON Output
 
 ```bash
@@ -379,13 +408,13 @@ By default, F35 also prints colored status logs to `stderr`.
 Use `-q` to silence those logs and keep only result lines on `stdout`.
 
 On interactive terminals, the progress status updates in place on a single line so healthy resolver output stays visible above it.
+If `-dns` is enabled, that same line first shows `dns` and then switches to `e2e`.
 
 Typical status logs look like this:
 
 ```txt
 [INFO] starting | resolvers=5000 | workers=20 | engine=vaydns
-[INFO] config | checks=probe,upload | wait=1000ms | timeouts=probe=15s,upload=15s
-[INFO] 50/5000 | healthy=11 | failed=39 | elapsed=28s
+[INFO] e2e 50/5000 | healthy=11 | failed=39 | elapsed=28s
 [INFO] completed | 5000/5000 | healthy=241 | failed=4759 | elapsed=2m14s
 ```
 

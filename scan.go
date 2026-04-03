@@ -13,9 +13,16 @@ import (
 
 type scanStats struct {
 	mu        sync.Mutex
+	stage     string
+	total     int
 	processed int
 	healthy   int
 }
+
+const (
+	progressStageAlive = "alive"
+	progressStageE2E   = "e2e"
+)
 
 func Scan(cfg Config, hooks Hooks) error {
 	runtime, err := prepareConfig(cfg)
@@ -23,16 +30,34 @@ func Scan(cfg Config, hooks Hooks) error {
 		return err
 	}
 
+	if runtime.Alive {
+		aliveResolvers, err := filterAliveResolvers(&runtime, hooks)
+		if err != nil {
+			return err
+		}
+		runtime.Resolvers = aliveResolvers
+		if len(runtime.Resolvers) == 0 {
+			return nil
+		}
+		if hooks.OnProgress != nil {
+			hooks.OnProgress(Progress{Stage: progressStageE2E, Total: len(runtime.Resolvers)})
+		}
+	}
+
+	return scanResolvers(&runtime, hooks)
+}
+
+func scanResolvers(runtime *runtimeConfig, hooks Hooks) error {
 	total := len(runtime.Resolvers)
 	jobs := make(chan string, runtime.Workers*2)
-	stats := &scanStats{}
+	stats := newScanStats(progressStageE2E, total)
 
 	var wg sync.WaitGroup
 	for i := 0; i < runtime.Workers; i++ {
 		wg.Add(1)
 		go func(port int) {
 			defer wg.Done()
-			worker(port, &runtime, jobs, total, hooks, stats)
+			worker(port, runtime, jobs, hooks, stats)
 		}(runtime.StartPort + i)
 	}
 
@@ -45,7 +70,7 @@ func Scan(cfg Config, hooks Hooks) error {
 	return nil
 }
 
-func worker(port int, cfg *runtimeConfig, jobs <-chan string, total int, hooks Hooks, stats *scanStats) {
+func worker(port int, cfg *runtimeConfig, jobs <-chan string, hooks Hooks, stats *scanStats) {
 	proxyURL := &url.URL{
 		Scheme: cfg.Proxy,
 		Host:   net.JoinHostPort("127.0.0.1", strconv.Itoa(port)),
@@ -68,7 +93,7 @@ func worker(port int, cfg *runtimeConfig, jobs <-chan string, total int, hooks H
 
 	for resolver := range jobs {
 		result, success := tryResolver(resolver, port, cfg, client)
-		progress := stats.Record(total, success)
+		progress := stats.Record(success)
 		if hooks.OnProgress != nil {
 			hooks.OnProgress(progress)
 		}
@@ -78,7 +103,14 @@ func worker(port int, cfg *runtimeConfig, jobs <-chan string, total int, hooks H
 	}
 }
 
-func (s *scanStats) Record(total int, success bool) Progress {
+func newScanStats(stage string, total int) *scanStats {
+	return &scanStats{
+		stage: stage,
+		total: total,
+	}
+}
+
+func (s *scanStats) Record(success bool) Progress {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -88,7 +120,8 @@ func (s *scanStats) Record(total int, success bool) Progress {
 	}
 
 	return Progress{
-		Total:     total,
+		Stage:     s.stage,
+		Total:     s.total,
 		Processed: s.processed,
 		Healthy:   s.healthy,
 		Failed:    s.processed - s.healthy,
