@@ -45,77 +45,60 @@ You need all of these:
 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o f35 ./cmd/f35
 ```
 
-## Project Structure
+## Quick Start
 
-- root package `github.com/nxdp/f35`
-  importable scanner library
-- `./cmd/f35`
-  CLI entrypoint
+If you are new, start with the smallest common command:
 
-## Use As Library
+```bash
+f35 -r resolvers.txt -d t.example.com -a '-pubkey YOUR_PUBLIC_KEY'
+```
 
-```go
-package main
+This uses the default engine, which is `vaydns`.
 
-import (
-	"fmt"
+On Windows PowerShell, if `vaydns-client.exe` is not in `PATH`, use `-p`:
 
-	"github.com/nxdp/f35"
-)
-
-func main() {
-	cfg := f35.DefaultConfig()
-	cfg.Domain = "t.example.com"
-	cfg.Resolvers = []string{"1.1.1.1:53", "8.8.8.8:53"}
-	cfg.Upload = true
-	cfg.ExtraArgs = []string{"-pubkey", "YOUR_PUBLIC_KEY"}
-
-	err := f35.Scan(cfg, f35.Hooks{
-		OnResult: func(result f35.Result) {
-			fmt.Println(result.Resolver, result.LatencyMS)
-		},
-	})
-	if err != nil {
-		panic(err)
-	}
-}
+```powershell
+.\f35.exe -r resolvers.txt -d t.example.com -p .\vaydns-client.exe -a '-pubkey YOUR_PUBLIC_KEY'
 ```
 
 ## Flags
 
+If you are new, focus on `-r`, `-d`, `-a`, and sometimes `-p`.
+
+### Required For Most Runs
+
 - `-r`
   file that contains resolver IPs
-- `-e`
-  which tunnel client to use: `dnstt`, `slipstream`, or `vaydns`
-  default is `vaydns`
 - `-d`
   tunnel domain
 - `-a`
-  extra flags for your tunnel client, for example pubkey, timeouts, log level, or custom tuning
-- `-x`
-  proxy protocol F35 uses for the request through the tunnel
-  this must match what your tunnel path or server-side target expects
-  wrong `-x` can make healthy resolvers look dead
-  default is `socks5h`
-- `-U`
-  proxy username if the tunnel exit requires authentication
-- `-P`
-  proxy password if the tunnel exit requires authentication
-  `-P` requires `-U`
-- `-u`
-  test URL used for the probe request through the tunnel
-  default is `http://www.google.com/gen_204`
-- `-w`
-  how many resolvers to test at the same time
-- `-s`
-  how long to wait before the HTTP test, in milliseconds
-  this is important because the tunnel may need time to become usable
-- `-t`
-  probe request timeout in seconds
-  default is `15`
+  extra flags for your tunnel client
+  this is where engine-specific flags like `-pubkey` go
+  F35 passes this string to the tunnel client
+  always wrap the whole `-a` value in quotes
+  example: `-a "-pubkey YOUR_PUBLIC_KEY"`
+
+### Tunnel Client Selection
+
+- `-e`
+  which tunnel client to use: `dnstt`, `slipstream`, or `vaydns`
+  default is `vaydns`
+- `-p`
+  full path to the tunnel client binary if it is not in `PATH`
+  this is especially useful on Windows
+  example: `-p .\vaydns-client.exe`
+
+### Checks
+
 - `-probe`
   run a quick connectivity probe through the tunnel
   enabled by default
+- `-u`
+  HTTP URL used for the probe request
+  default is `http://www.google.com/gen_204`
+- `-t`
+  probe request timeout in seconds
+  default is `15`
 - `-download`
   run a real download test through the tunnel
   optional
@@ -132,29 +115,48 @@ func main() {
   HTTP URL used for the upload test
   default is `https://speed.cloudflare.com/__up`
 - `-upload-bytes`
-  number of bytes sent in the upload test body
+  number of bytes sent in the upload body
   default is `100000`
 - `-upload-timeout`
   timeout in seconds for the upload test
   default is `15`
+- `-whois`
+  look up resolver organization and country
+- `-whois-timeout`
+  timeout in seconds for the whois lookup
+  default is `15`
+
+### Tunnel And Scan Settings
+
+- `-x`
+  proxy protocol used for the HTTP request through the tunnel
+  this must match what your tunnel path expects
+  wrong `-x` can make healthy resolvers look dead
+  default is `socks5h`
+- `-U`
+  proxy username if the tunnel exit requires authentication
+- `-P`
+  proxy password if the tunnel exit requires authentication
+  `-P` requires `-U`
+- `-w`
+  how many resolvers to test at the same time
+- `-s`
+  how long to wait before the HTTP test, in milliseconds
+  raise this if the tunnel becomes usable slowly
 - `-R`
   number of retries for each resolver after the first failed attempt
 - `-l`
   starting local port for local tunnel listeners
   useful if you want to avoid port collisions or run multiple scans
-- `-p`
-  full path to the tunnel client binary if it is not in `PATH`
-- `-whois`
-  run a whois lookup for resolver organization and country
-- `-whois-timeout`
-  timeout in seconds for the whois lookup
-  default is `15`
+
+### Output
+
 - `-json`
   print one JSON object per result line instead of plain text
 - `-short`
   print only `IP:PORT LATENCY` in plain text output
 - `-q`
-  suppress startup and completion logs
+  suppress startup, progress, and completion logs
 
 ## Timeout Tuning
 
@@ -183,12 +185,30 @@ Good starting values:
 
 `-a` is only for tunnel client flags.
 
+Put the same flags there that you normally pass when you run the tunnel client manually.
+F35 does not replace your client config. It only fills in the resolver, listen address, and domain for you.
+
+Always wrap the whole `-a` value in quotes.
+
+- Linux and macOS:
+  `-a '-pubkey YOUR_PUBLIC_KEY'`
+- Windows PowerShell:
+  `-a '-pubkey YOUR_PUBLIC_KEY'`
+  `-a "-pubkey YOUR_PUBLIC_KEY"` also works
+- Windows `cmd.exe`:
+  use double quotes
+  `-a "-pubkey YOUR_PUBLIC_KEY"`
+
 Examples:
 
 - DNSTT:
   `-a '-pubkey YOUR_PUBLIC_KEY'`
 - VayDNS:
   `-a '-pubkey YOUR_PUBLIC_KEY -log-level info -udp-timeout 200ms'`
+- Windows `cmd.exe`:
+  `-a "-pubkey YOUR_PUBLIC_KEY"`
+- Windows PowerShell:
+  `-a '-pubkey YOUR_PUBLIC_KEY'`
 
 F35 automatically fills these parts for you:
 
@@ -269,8 +289,22 @@ f35 -r resolvers.txt -e dnstt -d t.example.com -x socks5h -a '-pubkey YOUR_PUBLI
 
 ### Use A Binary That Is Not In PATH
 
+Linux or macOS:
+
 ```bash
 f35 -r resolvers.txt -e vaydns -d t.example.com -x socks5h -p ./vaydns-client -a '-pubkey YOUR_PUBLIC_KEY'
+```
+
+Windows PowerShell:
+
+```powershell
+.\f35.exe -r resolvers.txt -d t.example.com -p .\vaydns-client.exe -a '-pubkey YOUR_PUBLIC_KEY'
+```
+
+Windows full path example:
+
+```powershell
+.\f35.exe -r resolvers.txt -d t.example.com -p C:\tools\vaydns-client.exe -a '-pubkey YOUR_PUBLIC_KEY'
 ```
 
 ### Make The Scan More Conservative
@@ -423,6 +457,8 @@ Fix it with one of these:
 - install the client
 - add it to `PATH`
 - use `-p /full/path/to/client`
+- on Windows, a common fix is `-p .\vaydns-client.exe`
+- on Windows, a full path also works, for example `-p C:\tools\vaydns-client.exe`
 
 ### No Output
 
@@ -459,3 +495,39 @@ Put the same client flags you normally use when running your tunnel client manua
 
 F35 is not replacing your tunnel client config.
 It is only fuzzing resolvers and local listen ports around that client command.
+
+## Project Structure
+
+- root package `github.com/nxdp/f35`
+  importable scanner library
+- `./cmd/f35`
+  CLI entrypoint
+
+## Use As Library
+
+```go
+package main
+
+import (
+	"fmt"
+
+	"github.com/nxdp/f35"
+)
+
+func main() {
+	cfg := f35.DefaultConfig()
+	cfg.Domain = "t.example.com"
+	cfg.Resolvers = []string{"1.1.1.1:53", "8.8.8.8:53"}
+	cfg.Upload = true
+	cfg.ExtraArgs = []string{"-pubkey", "YOUR_PUBLIC_KEY"}
+
+	err := f35.Scan(cfg, f35.Hooks{
+		OnResult: func(result f35.Result) {
+			fmt.Println(result.Resolver, result.LatencyMS)
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+}
+```
