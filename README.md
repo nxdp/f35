@@ -144,118 +144,61 @@ f35 -c f35.toml -workers 50 -download
 
 If you are new, focus on `-resolvers`, `-domain`, `-args`, `-config` or `-c`, and sometimes `-client-path`.
 
-### Required For Most Runs
+Use `-args` for tunnel-client-specific flags like `-pubkey`, and always wrap the whole value in quotes.
+Example: `-args "-pubkey YOUR_PUBLIC_KEY"`.
 
-- `-config`
-  path to a TOML config file
-  file values become defaults and CLI flags override them
-  short alias: `-c`
-- `-resolvers`
-  file that contains resolver IPs
-- `-domain`
-  tunnel domain
-- `-args`
-  extra flags for your tunnel client
-  this is where engine-specific flags like `-pubkey` go
-  F35 passes this string to the tunnel client
-  always wrap the whole `-args` value in quotes
-  example: `-args "-pubkey YOUR_PUBLIC_KEY"`
+### Required And Core Flags
 
-### Tunnel Client Selection
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `-config`, `-c` | none | Load a TOML config file. File values become defaults and CLI flags override them. |
+| `-resolvers` | required | Path to a file containing resolver IPs. |
+| `-domain` | required | Tunnel domain to test against. |
+| `-args` | none | Extra tunnel client flags. This is where engine-specific flags like `-pubkey` go. |
+| `-engine` | `vaydns` | Tunnel client engine: `dnstt`, `slipstream`, or `vaydns`. |
+| `-client-path` | `PATH` lookup | Explicit path to the tunnel client binary if it is not in `PATH`. Useful on Windows. |
 
-- `-engine`
-  which tunnel client to use: `dnstt`, `slipstream`, or `vaydns`
-  default is `vaydns`
-- `-client-path`
-  full path to the tunnel client binary if it is not in `PATH`
-  this is especially useful on Windows
-  example: `-client-path .\vaydns-client.exe`
+### Check Flags
 
-### Checks
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `-dns` | `false` | Run a fast UDP DNS prefilter before the E2E scan. This only checks whether the resolver answers DNS. |
+| `-dns-name` | `cloudflare.com` | Domain name used for the DNS prefilter query. |
+| `-dns-timeout` | `2` | DNS prefilter timeout in seconds. |
+| `-dns-retries` | `1` | Retry count for each resolver in the DNS prefilter. |
+| `-dns-threads` | `100` | Concurrent worker count for the DNS prefilter. |
+| `-probe` | `true` | Run a quick connectivity probe through the tunnel. |
+| `-probe-url` | `http://www.google.com/gen_204` | HTTP URL used for the probe request. |
+| `-probe-timeout` | `15` | Probe request timeout in seconds. |
+| `-download` | `false` | Run a real download test through the tunnel. |
+| `-download-url` | `https://speed.cloudflare.com/__down?bytes=100000` | HTTP URL used for the download test. |
+| `-download-timeout` | `15` | Download request timeout in seconds. |
+| `-upload` | `false` | Run a real upload test through the tunnel. |
+| `-upload-url` | `https://speed.cloudflare.com/__up` | HTTP URL used for the upload test. |
+| `-upload-bytes` | `100000` | Number of bytes sent in the upload body. |
+| `-upload-timeout` | `15` | Upload request timeout in seconds. |
+| `-whois` | `false` | Look up resolver organization and country. |
+| `-whois-timeout` | `15` | Whois lookup timeout in seconds. |
 
-- `-dns`
-  run a fast UDP DNS prefilter before the E2E scan
-  this only checks whether the resolver answers a simple DNS query
-  it does not prove the tunnel is usable
-- `-dns-name`
-  domain name used for the DNS prefilter query
-  default is `cloudflare.com`
-- `-dns-timeout`
-  timeout in seconds for the DNS prefilter
-  default is `2`
-- `-dns-retries`
-  number of retries per resolver in the DNS prefilter
-  default is `1`
-- `-dns-threads`
-  number of concurrent workers used by the DNS prefilter
-  default is `100`
-- `-probe`
-  run a quick connectivity probe through the tunnel
-  enabled by default
-- `-probe-url`
-  HTTP URL used for the probe request
-  default is `http://www.google.com/gen_204`
-- `-probe-timeout`
-  probe request timeout in seconds
-  default is `15`
-- `-download`
-  run a real download test through the tunnel
-  optional
-- `-download-url`
-  HTTP URL used for the download test
-  default is `https://speed.cloudflare.com/__down?bytes=100000`
-- `-download-timeout`
-  timeout in seconds for the download test
-  default is `15`
-- `-upload`
-  run a real upload test through the tunnel
-  optional
-- `-upload-url`
-  HTTP URL used for the upload test
-  default is `https://speed.cloudflare.com/__up`
-- `-upload-bytes`
-  number of bytes sent in the upload body
-  default is `100000`
-- `-upload-timeout`
-  timeout in seconds for the upload test
-  default is `15`
-- `-whois`
-  look up resolver organization and country
-- `-whois-timeout`
-  timeout in seconds for the whois lookup
-  default is `15`
+### Scan Settings
 
-### Tunnel And Scan Settings
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `-proxy` | `socks5h` | Proxy protocol used for the HTTP request through the tunnel. Wrong values can make healthy resolvers look dead. |
+| `-proxy-user` | none | Proxy username if the tunnel exit requires authentication. |
+| `-proxy-pass` | none | Proxy password if the tunnel exit requires authentication. Requires `-proxy-user`. |
+| `-workers` | `20` | Number of concurrent E2E scan workers. |
+| `-wait` | `1000` | Milliseconds to wait for tunnel establishment before HTTP tests. |
+| `-retries` | `0` | Retry count after the first failed E2E attempt. |
+| `-start-port` | `40000` | First local listen port used for worker listener allocation. |
 
-- `-proxy`
-  proxy protocol used for the HTTP request through the tunnel
-  this must match what your tunnel path expects
-  wrong `-proxy` can make healthy resolvers look dead
-  default is `socks5h`
-- `-proxy-user`
-  proxy username if the tunnel exit requires authentication
-- `-proxy-pass`
-  proxy password if the tunnel exit requires authentication
-  `-proxy-pass` requires `-proxy-user`
-- `-workers`
-  how many resolvers to test at the same time
-- `-wait`
-  how long to wait before the HTTP test, in milliseconds
-  raise this if the tunnel becomes usable slowly
-- `-retries`
-  number of retries for each resolver after the first failed attempt
-- `-start-port`
-  starting local port for local tunnel listeners
-  useful if you want to avoid port collisions or run multiple scans
+### Output Flags
 
-### Output
-
-- `-json`
-  print one JSON object per result line instead of plain text
-- `-short`
-  print only `IP:PORT LATENCY` in plain text output
-- `-quiet`
-  suppress startup, progress, and completion logs
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `-json` | `false` | Print one JSON object per result line instead of plain text. |
+| `-short` | `false` | Print only `IP:PORT LATENCY` in plain text output. |
+| `-quiet` | `false` | Suppress startup, progress, and completion logs. |
 
 ## Timeout Tuning
 
