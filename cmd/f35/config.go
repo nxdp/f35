@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	toml "github.com/pelletier/go-toml/v2"
@@ -44,26 +43,6 @@ type fileConfig struct {
 	JSON            *bool   `toml:"json"`
 	Short           *bool   `toml:"short"`
 	Quiet           *bool   `toml:"quiet"`
-}
-
-func findConfigPath(args []string) (string, error) {
-	var path string
-
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		switch {
-		case arg == "-config":
-			if i+1 >= len(args) {
-				return "", fmt.Errorf("-config requires a path")
-			}
-			path = args[i+1]
-			i++
-		case strings.HasPrefix(arg, "-config="):
-			path = strings.TrimPrefix(arg, "-config=")
-		}
-	}
-
-	return strings.TrimSpace(path), nil
 }
 
 func loadConfigFile(path string, cfg *f35.Config, opts *cliOptions) error {

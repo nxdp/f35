@@ -37,7 +37,7 @@ You need all of these:
   - `dnstt-client`
   - `slipstream-client`
   - `vaydns-client`
-- the extra flags that your tunnel client needs, passed with `-a`
+- the extra flags that your tunnel client needs, passed with `-args`
 
 ## Build
 
@@ -50,15 +50,15 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o f35 ./cmd/f35
 If you are new, start with the smallest common command:
 
 ```bash
-f35 -r resolvers.txt -d t.example.com -a '-pubkey YOUR_PUBLIC_KEY'
+f35 -resolvers resolvers.txt -domain t.example.com -args '-pubkey YOUR_PUBLIC_KEY'
 ```
 
 This uses the default engine, which is `vaydns`.
 
-On Windows PowerShell, if `vaydns-client.exe` is not in `PATH`, use `-p`:
+On Windows PowerShell, if `vaydns-client.exe` is not in `PATH`, use `-client-path`:
 
 ```powershell
-.\f35.exe -r resolvers.txt -d t.example.com -p .\vaydns-client.exe -a '-pubkey YOUR_PUBLIC_KEY'
+.\f35.exe -resolvers resolvers.txt -domain t.example.com -client-path .\vaydns-client.exe -args '-pubkey YOUR_PUBLIC_KEY'
 ```
 
 ## Config File
@@ -101,7 +101,7 @@ f35 -config f35.toml
 CLI flags override the file:
 
 ```bash
-f35 -config f35.toml -w 50 -download
+f35 -config f35.toml -workers 50 -download
 ```
 
 ### Full Config Example
@@ -172,33 +172,33 @@ f35 -config f35.toml
 
 ## Flags
 
-If you are new, focus on `-r`, `-d`, `-a`, `-config`, and sometimes `-p`.
+If you are new, focus on `-resolvers`, `-domain`, `-args`, `-config`, and sometimes `-client-path`.
 
 ### Required For Most Runs
 
 - `-config`
   path to a TOML config file
   file values become defaults and CLI flags override them
-- `-r`
+- `-resolvers`
   file that contains resolver IPs
-- `-d`
+- `-domain`
   tunnel domain
-- `-a`
+- `-args`
   extra flags for your tunnel client
   this is where engine-specific flags like `-pubkey` go
   F35 passes this string to the tunnel client
-  always wrap the whole `-a` value in quotes
-  example: `-a "-pubkey YOUR_PUBLIC_KEY"`
+  always wrap the whole `-args` value in quotes
+  example: `-args "-pubkey YOUR_PUBLIC_KEY"`
 
 ### Tunnel Client Selection
 
-- `-e`
+- `-engine`
   which tunnel client to use: `dnstt`, `slipstream`, or `vaydns`
   default is `vaydns`
-- `-p`
+- `-client-path`
   full path to the tunnel client binary if it is not in `PATH`
   this is especially useful on Windows
-  example: `-p .\vaydns-client.exe`
+  example: `-client-path .\vaydns-client.exe`
 
 ### Checks
 
@@ -221,10 +221,10 @@ If you are new, focus on `-r`, `-d`, `-a`, `-config`, and sometimes `-p`.
 - `-probe`
   run a quick connectivity probe through the tunnel
   enabled by default
-- `-u`
+- `-probe-url`
   HTTP URL used for the probe request
   default is `http://www.google.com/gen_204`
-- `-t`
+- `-timeout`
   probe request timeout in seconds
   default is `15`
 - `-download`
@@ -256,24 +256,24 @@ If you are new, focus on `-r`, `-d`, `-a`, `-config`, and sometimes `-p`.
 
 ### Tunnel And Scan Settings
 
-- `-x`
+- `-proxy`
   proxy protocol used for the HTTP request through the tunnel
   this must match what your tunnel path expects
-  wrong `-x` can make healthy resolvers look dead
+  wrong `-proxy` can make healthy resolvers look dead
   default is `socks5h`
-- `-U`
+- `-proxy-user`
   proxy username if the tunnel exit requires authentication
-- `-P`
+- `-proxy-pass`
   proxy password if the tunnel exit requires authentication
-  `-P` requires `-U`
-- `-w`
+  `-proxy-pass` requires `-proxy-user`
+- `-workers`
   how many resolvers to test at the same time
-- `-s`
+- `-wait`
   how long to wait before the HTTP test, in milliseconds
   raise this if the tunnel becomes usable slowly
-- `-R`
+- `-retries`
   number of retries for each resolver after the first failed attempt
-- `-l`
+- `-start-port`
   starting local port for local tunnel listeners
   useful if you want to avoid port collisions or run multiple scans
 
@@ -283,18 +283,18 @@ If you are new, focus on `-r`, `-d`, `-a`, `-config`, and sometimes `-p`.
   print one JSON object per result line instead of plain text
 - `-short`
   print only `IP:PORT LATENCY` in plain text output
-- `-q`
+- `-quiet`
   suppress startup, progress, and completion logs
 
 ## Timeout Tuning
 
 Use these as the main knobs:
 
-- `-s`
+- `-wait`
   wait longer here if the tunnel starts too slowly
 - `-dns-timeout`
   raise this if the DNS prefilter is missing resolvers that should answer DNS
-- `-t`
+- `-timeout`
   raise this if the quick probe is timing out
 - `-download-timeout`
   raise this if the download test starts but does not finish in time
@@ -306,41 +306,41 @@ Use these as the main knobs:
 Good starting values:
 
 - very large resolver list: enable `-dns`
-- slow tunnel startup: increase `-s`
+- slow tunnel startup: increase `-wait`
 - slow DNS responses in prefilter: increase `-dns-timeout`
 - weak or filtered path: increase `-download-timeout`
 - weak upload path: increase `-upload-timeout`
 - slow whois API: increase `-whois-timeout`
-- only probe fails: increase `-t`
+- only probe fails: increase `-timeout`
 
-## How `-a` Works
+## How `-args` Works
 
-`-a` is only for tunnel client flags.
+`-args` is only for tunnel client flags.
 
 Put the same flags there that you normally pass when you run the tunnel client manually.
 F35 does not replace your client config. It only fills in the resolver, listen address, and domain for you.
 
-Always wrap the whole `-a` value in quotes.
+Always wrap the whole `-args` value in quotes.
 
 - Linux and macOS:
-  `-a '-pubkey YOUR_PUBLIC_KEY'`
+  `-args '-pubkey YOUR_PUBLIC_KEY'`
 - Windows PowerShell:
-  `-a '-pubkey YOUR_PUBLIC_KEY'`
-  `-a "-pubkey YOUR_PUBLIC_KEY"` also works
+  `-args '-pubkey YOUR_PUBLIC_KEY'`
+  `-args "-pubkey YOUR_PUBLIC_KEY"` also works
 - Windows `cmd.exe`:
   use double quotes
-  `-a "-pubkey YOUR_PUBLIC_KEY"`
+  `-args "-pubkey YOUR_PUBLIC_KEY"`
 
 Examples:
 
 - DNSTT:
-  `-a '-pubkey YOUR_PUBLIC_KEY'`
+  `-args '-pubkey YOUR_PUBLIC_KEY'`
 - VayDNS:
-  `-a '-pubkey YOUR_PUBLIC_KEY -log-level info -udp-timeout 200ms'`
+  `-args '-pubkey YOUR_PUBLIC_KEY -log-level info -udp-timeout 200ms'`
 - Windows `cmd.exe`:
-  `-a "-pubkey YOUR_PUBLIC_KEY"`
+  `-args "-pubkey YOUR_PUBLIC_KEY"`
 - Windows PowerShell:
-  `-a '-pubkey YOUR_PUBLIC_KEY'`
+  `-args '-pubkey YOUR_PUBLIC_KEY'`
 
 F35 automatically fills these parts for you:
 
@@ -348,14 +348,14 @@ F35 automatically fills these parts for you:
 - local listen address
 - domain
 
-For `dnstt`, F35 places `-a` before the positional `domain` and `listen` arguments.
+For `dnstt`, F35 places `-args` before the positional `domain` and `listen` arguments.
 
 ## First Real Example
 
 If you are new, start with something like this:
 
 ```bash
-f35 -r resolvers.txt -e dnstt -d t.example.com -x socks5h -a '-pubkey YOUR_PUBLIC_KEY'
+f35 -resolvers resolvers.txt -engine dnstt -domain t.example.com -proxy socks5h -args '-pubkey YOUR_PUBLIC_KEY'
 ```
 
 What this means:
@@ -371,52 +371,52 @@ What this means:
 ### DNSTT
 
 ```bash
-f35 -r resolvers.txt \
-  -e dnstt \
-  -d t.example.com \
-  -x socks5h \
-  -a '-pubkey YOUR_PUBLIC_KEY'
+f35 -resolvers resolvers.txt \
+  -engine dnstt \
+  -domain t.example.com \
+  -proxy socks5h \
+  -args '-pubkey YOUR_PUBLIC_KEY'
 ```
 
 ### VayDNS
 
 ```bash
-f35 -r resolvers.txt \
-  -e vaydns \
-  -d t.example.com \
-  -x socks5h \
-  -a '-pubkey YOUR_PUBLIC_KEY -log-level info -udp-timeout 200ms -open-stream-timeout 7s -idle-timeout 10s -keepalive 2s -udp-workers 200 -rps 300 -max-streams 0 -max-qname-len 101 -max-num-labels 2'
+f35 -resolvers resolvers.txt \
+  -engine vaydns \
+  -domain t.example.com \
+  -proxy socks5h \
+  -args '-pubkey YOUR_PUBLIC_KEY -log-level info -udp-timeout 200ms -open-stream-timeout 7s -idle-timeout 10s -keepalive 2s -udp-workers 200 -rps 300 -max-streams 0 -max-qname-len 101 -max-num-labels 2'
 ```
 
 ### Slipstream
 
 ```bash
-f35 -r resolvers.txt \
-  -e slipstream \
-  -d t.example.com \
-  -x socks5h
+f35 -resolvers resolvers.txt \
+  -engine slipstream \
+  -domain t.example.com \
+  -proxy socks5h
 ```
 
-### Proxy Auth With `-U` And `-P`
+### Proxy Auth With `-proxy-user` And `-proxy-pass`
 
 Use this if the proxy exposed by your tunnel requires a username and password:
 
 ```bash
-f35 -r resolvers.txt \
-  -e dnstt \
-  -d t.example.com \
-  -x socks5h \
-  -U myuser \
-  -P mypass \
-  -a '-pubkey YOUR_PUBLIC_KEY'
+f35 -resolvers resolvers.txt \
+  -engine dnstt \
+  -domain t.example.com \
+  -proxy socks5h \
+  -proxy-user myuser \
+  -proxy-pass mypass \
+  -args '-pubkey YOUR_PUBLIC_KEY'
 ```
 
-`-P` only works together with `-U`.
+`-proxy-pass` only works together with `-proxy-user`.
 
 ### Save Only Healthy Resolvers
 
 ```bash
-f35 -r resolvers.txt -e dnstt -d t.example.com -x socks5h -a '-pubkey YOUR_PUBLIC_KEY' | tee healthy.txt
+f35 -resolvers resolvers.txt -engine dnstt -domain t.example.com -proxy socks5h -args '-pubkey YOUR_PUBLIC_KEY' | tee healthy.txt
 ```
 
 ### Use A Binary That Is Not In PATH
@@ -424,19 +424,19 @@ f35 -r resolvers.txt -e dnstt -d t.example.com -x socks5h -a '-pubkey YOUR_PUBLI
 Linux or macOS:
 
 ```bash
-f35 -r resolvers.txt -e vaydns -d t.example.com -x socks5h -p ./vaydns-client -a '-pubkey YOUR_PUBLIC_KEY'
+f35 -resolvers resolvers.txt -engine vaydns -domain t.example.com -proxy socks5h -client-path ./vaydns-client -args '-pubkey YOUR_PUBLIC_KEY'
 ```
 
 Windows PowerShell:
 
 ```powershell
-.\f35.exe -r resolvers.txt -d t.example.com -p .\vaydns-client.exe -a '-pubkey YOUR_PUBLIC_KEY'
+.\f35.exe -resolvers resolvers.txt -domain t.example.com -client-path .\vaydns-client.exe -args '-pubkey YOUR_PUBLIC_KEY'
 ```
 
 Windows full path example:
 
 ```powershell
-.\f35.exe -r resolvers.txt -d t.example.com -p C:\tools\vaydns-client.exe -a '-pubkey YOUR_PUBLIC_KEY'
+.\f35.exe -resolvers resolvers.txt -domain t.example.com -client-path C:\tools\vaydns-client.exe -args '-pubkey YOUR_PUBLIC_KEY'
 ```
 
 ### Make The Scan More Conservative
@@ -444,7 +444,7 @@ Windows full path example:
 This is useful when resolvers are slow but still usable.
 
 ```bash
-f35 -r resolvers.txt -e vaydns -d t.example.com -x socks5h -w 50 -s 2000 -t 8 -R 2 -a '-pubkey YOUR_PUBLIC_KEY'
+f35 -resolvers resolvers.txt -engine vaydns -domain t.example.com -proxy socks5h -workers 50 -wait 2000 -timeout 8 -retries 2 -args '-pubkey YOUR_PUBLIC_KEY'
 ```
 
 Meaning:
@@ -457,7 +457,7 @@ Meaning:
 ### Show Resolver Owner Info
 
 ```bash
-f35 -r resolvers.txt -e vaydns -d t.example.com -x socks5h -whois -a '-pubkey YOUR_PUBLIC_KEY'
+f35 -resolvers resolvers.txt -engine vaydns -domain t.example.com -proxy socks5h -whois -args '-pubkey YOUR_PUBLIC_KEY'
 ```
 
 This keeps the enabled checks independent, and if `-whois` is enabled, plain output also includes org and country fields for that resolver IP.
@@ -468,7 +468,7 @@ If your tunnel goes into a more advanced upstream chain, this extra lookup can b
 ### Add Upload Testing
 
 ```bash
-f35 -r resolvers.txt -e vaydns -d t.example.com -x socks5h -download -upload -a '-pubkey YOUR_PUBLIC_KEY'
+f35 -resolvers resolvers.txt -engine vaydns -domain t.example.com -proxy socks5h -download -upload -args '-pubkey YOUR_PUBLIC_KEY'
 ```
 
 This adds a real upload request to the scan and keeps it independent from the other checks.
@@ -477,7 +477,7 @@ By default it sends `100000` bytes with a `POST`, and you can change that with `
 ### Use The DNS Prefilter First
 
 ```bash
-f35 -r resolvers.txt -d t.example.com -dns -a '-pubkey YOUR_PUBLIC_KEY'
+f35 -resolvers resolvers.txt -domain t.example.com -dns -args '-pubkey YOUR_PUBLIC_KEY'
 ```
 
 This first sends a fast UDP DNS query to each resolver using `cloudflare.com`.
@@ -486,7 +486,7 @@ Only resolvers that answer move on to the real E2E tunnel scan.
 ### JSON Output
 
 ```bash
-f35 -r resolvers.txt -e vaydns -d t.example.com -x socks5h -whois -upload -json -a '-pubkey YOUR_PUBLIC_KEY'
+f35 -resolvers resolvers.txt -engine vaydns -domain t.example.com -proxy socks5h -whois -upload -json -args '-pubkey YOUR_PUBLIC_KEY'
 ```
 
 Use this if you want to parse the output in another program.
@@ -494,12 +494,12 @@ Use this if you want to parse the output in another program.
 ## Important Note About Advanced Upstreams
 
 F35 does not generate advanced proxy protocol packets by itself.
-It only sends a normal HTTP request through the tunnel using the protocol selected with `-x`.
+It only sends a normal HTTP request through the tunnel using the protocol selected with `-proxy`.
 
 Examples:
 
-- if your tunnel path expects SOCKS, use `-x socks5` or `-x socks5h`
-- if your tunnel path expects HTTP proxy traffic, use `-x http`
+- if your tunnel path expects SOCKS, use `-proxy socks5` or `-proxy socks5h`
+- if your tunnel path expects HTTP proxy traffic, use `-proxy http`
 
 If you use something more advanced behind the tunnel, like `vless+ws`, F35 is not generating native `vless+ws` traffic.
 It is only checking whether the tunnel path can move a request and return any response.
@@ -512,12 +512,12 @@ That means:
 - F35 does not require HTTP `200`
 - even `400` or `404` can still prove that the tunnel is working
 - `-whois` may be less useful in those advanced chains
-- wrong `-x` can ruin scan results
+- wrong `-proxy` can ruin scan results
 
 ## Output
 
 By default, F35 also prints colored status logs to `stderr`.
-Use `-q` to silence those logs and keep only result lines on `stdout`.
+Use `-quiet` to silence those logs and keep only result lines on `stdout`.
 
 On interactive terminals, the progress status updates in place on a single line so healthy resolver output stays visible above it.
 If `-dns` is enabled, that same line first shows `dns` and then switches to `e2e`.
@@ -581,11 +581,11 @@ The output stays simple and the status fields always appear in the same order. W
 
 If you do not know what to tune first, try this order:
 
-1. keep `-x socks5h`
-2. if output is empty, increase `-s`
-3. if working resolvers are slow, increase `-t`
-4. if results are unstable, lower `-w`
-5. if some resolvers fail randomly, add `-R 1` or `-R 2`
+1. keep `-proxy socks5h`
+2. if output is empty, increase `-wait`
+3. if working resolvers are slow, increase `-timeout`
+4. if results are unstable, lower `-workers`
+5. if some resolvers fail randomly, add `-retries 1` or `-retries 2`
 
 ## Troubleshooting
 
@@ -597,9 +597,9 @@ Fix it with one of these:
 
 - install the client
 - add it to `PATH`
-- use `-p /full/path/to/client`
-- on Windows, a common fix is `-p .\vaydns-client.exe`
-- on Windows, a full path also works, for example `-p C:\tools\vaydns-client.exe`
+- use `-client-path /full/path/to/client`
+- on Windows, a common fix is `-client-path .\vaydns-client.exe`
+- on Windows, a full path also works, for example `-client-path C:\tools\vaydns-client.exe`
 
 ### No Output
 
@@ -607,17 +607,17 @@ Usually one of these is wrong:
 
 - domain
 - engine
-- pubkey or other tunnel client flags inside `-a`
+- pubkey or other tunnel client flags inside `-args`
 - wait time is too short
 - timeout is too short
 
 Try this:
 
 ```bash
--s 2000 -t 8 -R 1
+-wait 2000 -timeout 8 -retries 1
 ```
 
-### `-P requires -U`
+### `-proxy-pass requires -proxy-user`
 
 If you set a proxy password, you must also set a proxy username.
 
@@ -625,12 +625,12 @@ If you set a proxy password, you must also set a proxy username.
 
 Try:
 
-- lower `-w`
-- increase `-s`
-- increase `-t`
-- add retries with `-R`
+- lower `-workers`
+- increase `-wait`
+- increase `-timeout`
+- add retries with `-retries`
 
-### I Do Not Know What To Put In `-a`
+### I Do Not Know What To Put In `-args`
 
 Put the same client flags you normally use when running your tunnel client manually.
 

@@ -45,7 +45,7 @@ func main() {
 func run() error {
 	cfg, opts, err := parseFlags()
 	if err != nil {
-		flag.Usage()
+		printUsage()
 		return err
 	}
 
@@ -56,7 +56,7 @@ func run() error {
 	cfg.Resolvers = resolvers
 
 	if err := f35.ValidateConfig(cfg); err != nil {
-		flag.Usage()
+		printUsage()
 		return err
 	}
 
@@ -110,83 +110,134 @@ func run() error {
 func parseFlags() (f35.Config, cliOptions, error) {
 	cfg := f35.DefaultConfig()
 	opts := cliOptions{}
+	configPath := ""
 
-	configPath, err := findConfigPath(os.Args[1:])
+	cfg, opts, configPath, err := parseCLIArgs(os.Args[1:], cfg, opts, configPath)
 	if err != nil {
 		return f35.Config{}, cliOptions{}, err
 	}
 	if configPath != "" {
+		cfg = f35.DefaultConfig()
+		opts = cliOptions{}
 		if err := loadConfigFile(configPath, &cfg, &opts); err != nil {
+			return f35.Config{}, cliOptions{}, err
+		}
+		cfg, opts, _, err = parseCLIArgs(os.Args[1:], cfg, opts, configPath)
+		if err != nil {
 			return f35.Config{}, cliOptions{}, err
 		}
 	}
 
-	dnsTimeout := int(cfg.AliveTimeout / time.Second)
-	probeTimeout := int(cfg.ProbeTimeout / time.Second)
-	downloadTimeout := int(cfg.DownloadTimeout / time.Second)
-	uploadTimeout := int(cfg.UploadTimeout / time.Second)
-	whoisTimeout := int(cfg.WhoisTimeout / time.Second)
-	tunnelWait := int(cfg.TunnelWait / time.Millisecond)
-
-	flag.StringVar(&opts.resolversFile, "r", opts.resolversFile, "Path to file containing resolvers (IP or IP:PORT per line)")
-	flag.StringVar(&cfg.Engine, "e", cfg.Engine, fmt.Sprintf("Tunnel engine to use: %s", strings.Join(f35.SupportedEngines(), "|")))
-	flag.StringVar(&cfg.ClientPath, "p", cfg.ClientPath, "Explicit path to client binary (optional)")
-	flag.StringVar(&configPath, "config", configPath, "Path to TOML config file")
-	flag.StringVar(&cfg.Domain, "d", cfg.Domain, "Tunnel domain (e.g., ns.example.com)")
-	flag.StringVar(&opts.args, "a", opts.args, "Extra engine CLI args; supports placeholders like {resolver}, {domain}, {listen}")
-	flag.BoolVar(&opts.json, "json", opts.json, "Print one JSON object per result line")
-	flag.BoolVar(&opts.quiet, "q", opts.quiet, "Suppress startup, progress, and completion logs")
-	flag.BoolVar(&opts.short, "short", opts.short, "Print only IP:PORT and latency in plain text output")
-	flag.BoolVar(&cfg.Alive, "dns", cfg.Alive, "Prefilter resolvers with a direct UDP DNS query before the E2E scan")
-	flag.StringVar(&cfg.AliveName, "dns-name", cfg.AliveName, "Domain name used for the DNS prefilter query")
-	flag.IntVar(&cfg.AliveThreads, "dns-threads", cfg.AliveThreads, "Number of concurrent workers for the DNS prefilter")
-	flag.IntVar(&cfg.AliveRetries, "dns-retries", cfg.AliveRetries, "Number of retries per resolver in the DNS prefilter")
-	flag.IntVar(&dnsTimeout, "dns-timeout", dnsTimeout, "DNS prefilter timeout in seconds")
-	flag.StringVar(&cfg.ProbeURL, "u", cfg.ProbeURL, "HTTP URL used for the probe request through the tunnel")
-	flag.BoolVar(&cfg.Probe, "probe", cfg.Probe, "Run a quick connectivity probe through the tunnel")
-	flag.BoolVar(&cfg.Download, "download", cfg.Download, "Run a real download test through the tunnel")
-	flag.StringVar(&cfg.DownloadURL, "download-url", cfg.DownloadURL, "HTTP URL used for the download test")
-	flag.BoolVar(&cfg.Upload, "upload", cfg.Upload, "Run a real upload test through the tunnel")
-	flag.StringVar(&cfg.UploadURL, "upload-url", cfg.UploadURL, "HTTP URL used for the upload test")
-	flag.IntVar(&cfg.UploadBytes, "upload-bytes", cfg.UploadBytes, "Number of bytes to send for the upload test")
-	flag.BoolVar(&cfg.Whois, "whois", cfg.Whois, "Lookup resolver owner info and print organization and country")
-	flag.StringVar(&cfg.Proxy, "x", cfg.Proxy, "Protocol to use when sending request through the tunnel: http|https|socks5|socks5h")
-	flag.StringVar(&cfg.ProxyUser, "U", cfg.ProxyUser, "Proxy username (if the tunnel exit requires auth)")
-	flag.StringVar(&cfg.ProxyPass, "P", cfg.ProxyPass, "Proxy password (if the tunnel exit requires auth)")
-	flag.IntVar(&cfg.Workers, "w", cfg.Workers, "Number of concurrent scanning workers")
-	flag.IntVar(&cfg.Retries, "R", cfg.Retries, "Number of retries per resolver after the first failure")
-	flag.IntVar(&tunnelWait, "s", tunnelWait, "Time to wait (ms) for tunnel establishment before testing HTTP")
-	flag.IntVar(&probeTimeout, "t", probeTimeout, "Probe request timeout in seconds")
-	flag.IntVar(&downloadTimeout, "download-timeout", downloadTimeout, "Download request timeout in seconds")
-	flag.IntVar(&uploadTimeout, "upload-timeout", uploadTimeout, "Upload request timeout in seconds")
-	flag.IntVar(&whoisTimeout, "whois-timeout", whoisTimeout, "WHOIS lookup timeout in seconds")
-	flag.IntVar(&cfg.StartPort, "l", cfg.StartPort, "Starting local port for tunnel listeners")
-
-	flag.Parse()
-
 	if opts.resolversFile == "" || strings.TrimSpace(cfg.Domain) == "" {
-		return f35.Config{}, cliOptions{}, errors.New("-r and -d are required")
+		return f35.Config{}, cliOptions{}, errors.New("-resolvers and -domain are required")
 	}
 
 	if opts.args != "" {
 		extraArgs, err := splitCommandLine(opts.args)
 		if err != nil {
-			return f35.Config{}, cliOptions{}, fmt.Errorf("invalid -a: %w", err)
+			return f35.Config{}, cliOptions{}, fmt.Errorf("invalid -args: %w", err)
 		}
 		cfg.ExtraArgs = extraArgs
 	}
-
-	cfg.TunnelWait = time.Duration(tunnelWait) * time.Millisecond
-	cfg.AliveTimeout = time.Duration(dnsTimeout) * time.Second
-	cfg.ProbeTimeout = time.Duration(probeTimeout) * time.Second
-	cfg.DownloadTimeout = time.Duration(downloadTimeout) * time.Second
-	cfg.UploadTimeout = time.Duration(uploadTimeout) * time.Second
-	cfg.WhoisTimeout = time.Duration(whoisTimeout) * time.Second
 
 	opts.colorize = !opts.json && fileIsTerminal(os.Stdout)
 	opts.logColorize = fileIsTerminal(os.Stderr)
 
 	return cfg, opts, nil
+}
+
+type timeoutFlags struct {
+	dns      int
+	probe    int
+	download int
+	upload   int
+	whois    int
+	wait     int
+}
+
+func parseCLIArgs(args []string, cfg f35.Config, opts cliOptions, configPath string) (f35.Config, cliOptions, string, error) {
+	timeouts := timeoutFlags{
+		dns:      int(cfg.AliveTimeout / time.Second),
+		probe:    int(cfg.ProbeTimeout / time.Second),
+		download: int(cfg.DownloadTimeout / time.Second),
+		upload:   int(cfg.UploadTimeout / time.Second),
+		whois:    int(cfg.WhoisTimeout / time.Second),
+		wait:     int(cfg.TunnelWait / time.Millisecond),
+	}
+
+	fs := newFlagSet(&cfg, &opts, &configPath, &timeouts)
+	if err := fs.Parse(args); err != nil {
+		return f35.Config{}, cliOptions{}, "", err
+	}
+
+	cfg.TunnelWait = time.Duration(timeouts.wait) * time.Millisecond
+	cfg.AliveTimeout = time.Duration(timeouts.dns) * time.Second
+	cfg.ProbeTimeout = time.Duration(timeouts.probe) * time.Second
+	cfg.DownloadTimeout = time.Duration(timeouts.download) * time.Second
+	cfg.UploadTimeout = time.Duration(timeouts.upload) * time.Second
+	cfg.WhoisTimeout = time.Duration(timeouts.whois) * time.Second
+
+	return cfg, opts, configPath, nil
+}
+
+func newFlagSet(cfg *f35.Config, opts *cliOptions, configPath *string, timeouts *timeoutFlags) *flag.FlagSet {
+	fs := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+
+	fs.StringVar(&opts.resolversFile, "resolvers", opts.resolversFile, "Path to file containing resolvers (IP or IP:PORT per line)")
+	fs.StringVar(&cfg.Engine, "engine", cfg.Engine, fmt.Sprintf("Tunnel engine to use: %s", strings.Join(f35.SupportedEngines(), "|")))
+	fs.StringVar(&cfg.ClientPath, "client-path", cfg.ClientPath, "Explicit path to client binary (optional)")
+	fs.StringVar(configPath, "config", *configPath, "Path to TOML config file")
+	fs.StringVar(&cfg.Domain, "domain", cfg.Domain, "Tunnel domain (e.g., ns.example.com)")
+	fs.StringVar(&opts.args, "args", opts.args, "Extra engine CLI args; supports placeholders like {resolver}, {domain}, {listen}")
+	fs.BoolVar(&opts.json, "json", opts.json, "Print one JSON object per result line")
+	fs.BoolVar(&opts.quiet, "quiet", opts.quiet, "Suppress startup, progress, and completion logs")
+	fs.BoolVar(&opts.short, "short", opts.short, "Print only IP:PORT and latency in plain text output")
+	fs.BoolVar(&cfg.Alive, "dns", cfg.Alive, "Prefilter resolvers with a direct UDP DNS query before the E2E scan")
+	fs.StringVar(&cfg.AliveName, "dns-name", cfg.AliveName, "Domain name used for the DNS prefilter query")
+	fs.IntVar(&cfg.AliveThreads, "dns-threads", cfg.AliveThreads, "Number of concurrent workers for the DNS prefilter")
+	fs.IntVar(&cfg.AliveRetries, "dns-retries", cfg.AliveRetries, "Number of retries per resolver in the DNS prefilter")
+	fs.IntVar(&timeouts.dns, "dns-timeout", timeouts.dns, "DNS prefilter timeout in seconds")
+	fs.StringVar(&cfg.ProbeURL, "probe-url", cfg.ProbeURL, "HTTP URL used for the probe request through the tunnel")
+	fs.BoolVar(&cfg.Probe, "probe", cfg.Probe, "Run a quick connectivity probe through the tunnel")
+	fs.BoolVar(&cfg.Download, "download", cfg.Download, "Run a real download test through the tunnel")
+	fs.StringVar(&cfg.DownloadURL, "download-url", cfg.DownloadURL, "HTTP URL used for the download test")
+	fs.BoolVar(&cfg.Upload, "upload", cfg.Upload, "Run a real upload test through the tunnel")
+	fs.StringVar(&cfg.UploadURL, "upload-url", cfg.UploadURL, "HTTP URL used for the upload test")
+	fs.IntVar(&cfg.UploadBytes, "upload-bytes", cfg.UploadBytes, "Number of bytes to send for the upload test")
+	fs.BoolVar(&cfg.Whois, "whois", cfg.Whois, "Lookup resolver owner info and print organization and country")
+	fs.StringVar(&cfg.Proxy, "proxy", cfg.Proxy, "Protocol to use when sending request through the tunnel: http|https|socks5|socks5h")
+	fs.StringVar(&cfg.ProxyUser, "proxy-user", cfg.ProxyUser, "Proxy username (if the tunnel exit requires auth)")
+	fs.StringVar(&cfg.ProxyPass, "proxy-pass", cfg.ProxyPass, "Proxy password (if the tunnel exit requires auth)")
+	fs.IntVar(&cfg.Workers, "workers", cfg.Workers, "Number of concurrent scanning workers")
+	fs.IntVar(&cfg.Retries, "retries", cfg.Retries, "Number of retries per resolver after the first failure")
+	fs.IntVar(&timeouts.wait, "wait", timeouts.wait, "Time to wait (ms) for tunnel establishment before testing HTTP")
+	fs.IntVar(&timeouts.probe, "timeout", timeouts.probe, "Probe request timeout in seconds")
+	fs.IntVar(&timeouts.download, "download-timeout", timeouts.download, "Download request timeout in seconds")
+	fs.IntVar(&timeouts.upload, "upload-timeout", timeouts.upload, "Upload request timeout in seconds")
+	fs.IntVar(&timeouts.whois, "whois-timeout", timeouts.whois, "WHOIS lookup timeout in seconds")
+	fs.IntVar(&cfg.StartPort, "start-port", cfg.StartPort, "Starting local port for tunnel listeners")
+
+	return fs
+}
+
+func printUsage() {
+	cfg := f35.DefaultConfig()
+	opts := cliOptions{}
+	configPath := ""
+	timeouts := timeoutFlags{
+		dns:      int(cfg.AliveTimeout / time.Second),
+		probe:    int(cfg.ProbeTimeout / time.Second),
+		download: int(cfg.DownloadTimeout / time.Second),
+		upload:   int(cfg.UploadTimeout / time.Second),
+		whois:    int(cfg.WhoisTimeout / time.Second),
+		wait:     int(cfg.TunnelWait / time.Millisecond),
+	}
+
+	fs := newFlagSet(&cfg, &opts, &configPath, &timeouts)
+	fs.SetOutput(os.Stderr)
+	_, _ = fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
+	fs.PrintDefaults()
 }
 
 func newStatusUI(opts cliOptions, startedAt time.Time, total int) *statusUI {
