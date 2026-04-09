@@ -546,11 +546,15 @@ import (
 func main() {
 	cfg := f35.DefaultConfig()
 	cfg.Domain = "t.example.com"
-	cfg.Resolvers = []string{"1.1.1.1:53", "8.8.8.8:53"}
+	resolvers, err := f35.LoadResolvers("resolvers.txt")
+	if err != nil {
+		panic(err)
+	}
+	cfg.Resolvers = resolvers
 	cfg.Upload = true
 	cfg.ExtraArgs = []string{"-pubkey", "YOUR_PUBLIC_KEY"}
 
-	err := f35.Scan(cfg, f35.Hooks{
+	err = f35.Scan(cfg, f35.Hooks{
 		OnResult: func(result f35.Result) {
 			fmt.Println(result.Resolver, result.LatencyMS)
 		},

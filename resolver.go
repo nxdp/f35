@@ -15,6 +15,8 @@ type parsedResolver struct {
 	port uint16
 }
 
+// LoadResolvers reads non-empty resolver lines from a file.
+// Resolver normalization and validation are handled by Scan and ValidateConfig.
 func LoadResolvers(path string) ([]string, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -22,24 +24,21 @@ func LoadResolvers(path string) ([]string, error) {
 	}
 	defer f.Close()
 
-	var raw []string
+	var lines []string
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
-		raw = append(raw, scanner.Text())
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" {
+			lines = append(lines, line)
+		}
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, err
 	}
-
-	resolvers := normalizeResolvers(raw)
-	if len(resolvers) == 0 {
-		return nil, fmt.Errorf("no valid resolvers found")
+	if len(lines) == 0 {
+		return nil, fmt.Errorf("no resolvers found")
 	}
-	return resolvers, nil
-}
-
-func normalizeResolvers(input []string) []string {
-	return resolverAddrs(parseResolvers(input))
+	return lines, nil
 }
 
 func parseResolvers(input []string) []parsedResolver {

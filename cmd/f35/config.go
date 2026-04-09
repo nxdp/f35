@@ -203,7 +203,7 @@ func newFlagSet(defaults f35.Config) *pflag.FlagSet {
 	fs.String("client-path", defaults.ClientPath, "Explicit path to client binary (optional)")
 	fs.StringP("config", "c", "", "Path to TOML config file")
 	fs.String("domain", defaults.Domain, "Tunnel domain (e.g., ns.example.com)")
-	fs.String("args", "", "Extra engine CLI args; supports placeholders like {resolver}, {domain}, {listen}")
+	fs.String("args", "", "Extra engine CLI args passed to the tunnel client as-is")
 	fs.Bool("json", false, "Print one JSON object per result line")
 	fs.Bool("quiet", false, "Suppress startup, progress, and completion logs")
 	fs.Bool("short", false, "Print only IP:PORT and latency in plain text output")

@@ -59,11 +59,6 @@ func run() error {
 	}
 	cfg.Resolvers = resolvers
 
-	if err := f35.ValidateConfig(cfg); err != nil {
-		printUsage()
-		return err
-	}
-
 	startedAt := time.Now()
 	ui := newStatusUI(opts, startedAt, len(cfg.Resolvers))
 	ui.UpdateProgress(f35.Progress{Total: len(cfg.Resolvers)})
@@ -186,12 +181,6 @@ func (ui *statusUI) RenderProgress() {
 	ui.mu.Lock()
 	defer ui.mu.Unlock()
 	ui.renderProgressLocked()
-}
-
-func (ui *statusUI) ClearProgress() {
-	ui.mu.Lock()
-	defer ui.mu.Unlock()
-	ui.clearProgressLocked()
 }
 
 func (ui *statusUI) StopLiveProgress() {

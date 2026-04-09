@@ -72,7 +72,7 @@ func worker(port int, cfg *runtimeConfig, jobs <-chan parsedResolver, hooks Hook
 	}
 
 	for resolver := range jobs {
-		result, success := tryResolver(resolver, port, cfg, client)
+		result, success := tryResolverWithRetries(resolver, port, cfg, client)
 		progress := stats.Record(success)
 		if hooks.OnProgress != nil {
 			hooks.OnProgress(progress)
@@ -81,6 +81,16 @@ func worker(port int, cfg *runtimeConfig, jobs <-chan parsedResolver, hooks Hook
 			hooks.OnResult(result)
 		}
 	}
+}
+
+func tryResolverWithRetries(resolver parsedResolver, port int, cfg *runtimeConfig, client *http.Client) (Result, bool) {
+	for attempt := 0; attempt <= cfg.Retries; attempt++ {
+		result, success := tryResolver(resolver, port, cfg, client)
+		if success {
+			return result, true
+		}
+	}
+	return Result{}, false
 }
 
 func newScanStats(total int) *scanStats {
@@ -107,24 +117,42 @@ func (s *scanStats) Record(success bool) Progress {
 }
 
 func tryResolver(resolver parsedResolver, port int, cfg *runtimeConfig, client *http.Client) (Result, bool) {
-	args, err := buildEngineArgs(cfg, resolver.addr, port)
-	if err != nil {
-		return Result{}, false
-	}
-
-	cmd := exec.Command(cfg.ClientPath, args...)
+	cmd := exec.Command(cfg.ClientPath, buildEngineArgs(cfg, resolver.addr, port)...)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	if err := cmd.Start(); err != nil {
 		return Result{}, false
 	}
 
-	defer func() {
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- cmd.Wait()
 	}()
 
-	time.Sleep(cfg.TunnelWait)
+	waited := false
+	defer func() {
+		if waited {
+			return
+		}
+		_ = cmd.Process.Kill()
+		<-waitCh
+	}()
+
+	if cfg.TunnelWait > 0 {
+		timer := time.NewTimer(cfg.TunnelWait)
+		select {
+		case <-timer.C:
+		case <-waitCh:
+			waited = true
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			return Result{}, false
+		}
+	}
 
 	result := Result{
 		Resolver: resolver.addr,

@@ -1,7 +1,6 @@
 package f35
 
 import (
-	"bytes"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -108,7 +107,7 @@ func prepareConfig(cfg Config) (runtimeConfig, error) {
 		parsedResolvers: resolvers,
 	}
 	if cfg.Upload {
-		runtime.uploadPayload = bytes.Repeat([]byte("0"), cfg.UploadBytes)
+		runtime.uploadPayload = make([]byte, cfg.UploadBytes)
 	}
 	return runtime, nil
 }
