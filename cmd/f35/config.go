@@ -22,6 +22,7 @@ type fileConfig struct {
 	Quiet           *bool   `toml:"quiet"`
 	Short           *bool   `toml:"short"`
 	ProbeURL        *string `toml:"probe_url"`
+	ProbeHTTPMethod *string `toml:"probe_http_method"`
 	Probe           *bool   `toml:"probe"`
 	Download        *bool   `toml:"download"`
 	DownloadURL     *string `toml:"download_url"`
@@ -108,6 +109,7 @@ func applyFileConfig(cfg *f35.Config, opts *cliOptions, fileCfg fileConfig) {
 	applyBool(&opts.quiet, fileCfg.Quiet)
 	applyBool(&opts.short, fileCfg.Short)
 	applyString(&cfg.ProbeURL, fileCfg.ProbeURL)
+	applyString(&cfg.ProbeHTTPMethod, fileCfg.ProbeHTTPMethod)
 	applyBool(&cfg.Probe, fileCfg.Probe)
 	applyBool(&cfg.Download, fileCfg.Download)
 	applyString(&cfg.DownloadURL, fileCfg.DownloadURL)
@@ -138,6 +140,7 @@ func applyFlagOverrides(cfg *f35.Config, opts *cliOptions, fs *pflag.FlagSet) {
 	applyChangedBool(fs, "quiet", &opts.quiet)
 	applyChangedBool(fs, "short", &opts.short)
 	applyChangedString(fs, "probe-url", &cfg.ProbeURL)
+	applyChangedString(fs, "probe-http-method", &cfg.ProbeHTTPMethod)
 	applyChangedBool(fs, "probe", &cfg.Probe)
 	applyChangedBool(fs, "download", &cfg.Download)
 	applyChangedString(fs, "download-url", &cfg.DownloadURL)
@@ -242,6 +245,7 @@ func newFlagSet(defaults f35.Config) *pflag.FlagSet {
 	fs.Bool("quiet", false, "Suppress startup, progress, and completion logs")
 	fs.Bool("short", false, "Print only IP:PORT and latency in plain text output")
 	fs.String("probe-url", defaults.ProbeURL, "HTTP URL used for the probe request through the tunnel")
+	fs.String("probe-http-method", defaults.ProbeHTTPMethod, "HTTP method used for the probe request: GET|HEAD")
 	fs.Bool("probe", defaults.Probe, "Run a quick connectivity probe through the tunnel")
 	fs.Bool("download", defaults.Download, "Run a real download test through the tunnel")
 	fs.String("download-url", defaults.DownloadURL, "HTTP URL used for the download test")

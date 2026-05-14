@@ -13,6 +13,7 @@ type Config struct {
 	Domain          string
 	Resolvers       []string
 	ProbeURL        string
+	ProbeHTTPMethod string
 	DownloadURL     string
 	UploadURL       string
 	Probe           bool
@@ -67,6 +68,7 @@ func DefaultConfig() Config {
 	return Config{
 		Engine:          "vaydns",
 		ProbeURL:        "http://www.google.com/gen_204",
+		ProbeHTTPMethod: "HEAD",
 		DownloadURL:     "https://speed.cloudflare.com/__down?bytes=100000",
 		UploadURL:       "https://speed.cloudflare.com/__up",
 		Probe:           true,
@@ -121,6 +123,9 @@ func normalizeAndValidateConfig(cfg Config) (Config, EngineSpec, []parsedResolve
 	if strings.TrimSpace(cfg.ProbeURL) == "" {
 		cfg.ProbeURL = defaults.ProbeURL
 	}
+	if strings.TrimSpace(cfg.ProbeHTTPMethod) == "" {
+		cfg.ProbeHTTPMethod = defaults.ProbeHTTPMethod
+	}
 	if strings.TrimSpace(cfg.DownloadURL) == "" {
 		cfg.DownloadURL = defaults.DownloadURL
 	}
@@ -153,6 +158,7 @@ func normalizeAndValidateConfig(cfg Config) (Config, EngineSpec, []parsedResolve
 	}
 
 	cfg.Engine = strings.ToLower(strings.TrimSpace(cfg.Engine))
+	cfg.ProbeHTTPMethod = strings.ToUpper(strings.TrimSpace(cfg.ProbeHTTPMethod))
 	cfg.Proxy = strings.ToLower(strings.TrimSpace(cfg.Proxy))
 	cfg.Domain = strings.TrimSpace(cfg.Domain)
 	resolvers := parseResolvers(cfg.Resolvers)
@@ -171,6 +177,12 @@ func normalizeAndValidateConfig(cfg Config) (Config, EngineSpec, []parsedResolve
 	case "http", "https", "socks5", "socks5h":
 	default:
 		return Config{}, EngineSpec{}, nil, fmt.Errorf("proxy must be one of: http, https, socks5, socks5h")
+	}
+
+	switch cfg.ProbeHTTPMethod {
+	case "GET", "HEAD":
+	default:
+		return Config{}, EngineSpec{}, nil, fmt.Errorf("probe HTTP method must be one of: GET, HEAD")
 	}
 
 	if cfg.ProxyPass != "" && cfg.ProxyUser == "" {

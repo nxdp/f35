@@ -174,7 +174,7 @@ func tryResolver(resolver parsedResolver, port int, cfg *runtimeConfig, client *
 	if cfg.Download {
 		result.Download = "fail"
 		latency, ok := runCheckUntilSuccess(cfg.DownloadTimeout, cmdDone, func(timeout time.Duration) (int64, bool) {
-			return doHTTPCheck(client, cfg.DownloadURL, timeout, true)
+			return doHTTPCheck(client, http.MethodGet, cfg.DownloadURL, timeout, true)
 		})
 		if ok {
 			result.Download = "ok"
@@ -216,7 +216,7 @@ func tryResolver(resolver parsedResolver, port int, cfg *runtimeConfig, client *
 	if cfg.Probe {
 		result.Probe = "fail"
 		latency, ok := runCheckUntilSuccess(cfg.ProbeTimeout, cmdDone, func(timeout time.Duration) (int64, bool) {
-			return doHTTPCheck(client, cfg.ProbeURL, timeout, false)
+			return doHTTPCheck(client, cfg.ProbeHTTPMethod, cfg.ProbeURL, timeout, false)
 		})
 		if ok {
 			result.Probe = "ok"

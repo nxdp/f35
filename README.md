@@ -81,6 +81,7 @@ args = "-pubkey YOUR_PUBLIC_KEY"
 
 probe = true
 probe_url = "http://www.google.com/gen_204"
+probe_http_method = "HEAD"
 probe_timeout = 15
 
 download = false
@@ -156,6 +157,7 @@ Example: `--args "-pubkey YOUR_PUBLIC_KEY"`.
 | --- | --- | --- |
 | `--probe` | `true` | Run a quick connectivity probe through the tunnel. |
 | `--probe-url` | `http://www.google.com/gen_204` | HTTP URL used for the probe request. |
+| `--probe-http-method` | `HEAD` | HTTP method used only for the probe request: `GET` or `HEAD`. |
 | `--probe-timeout` | `15` | Probe request timeout in seconds. |
 | `--download` | `false` | Run a real download test through the tunnel. |
 | `--download-url` | `https://speed.cloudflare.com/__down?bytes=100000` | HTTP URL used for the download test. |

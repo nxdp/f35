@@ -18,11 +18,11 @@ type whoisResponse struct {
 	Status  string `json:"status"`
 }
 
-func doHTTPCheck(client *http.Client, targetURL string, timeout time.Duration, drainBody bool) (int64, bool) {
+func doHTTPCheck(client *http.Client, method string, targetURL string, timeout time.Duration, drainBody bool) (int64, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
+	req, err := http.NewRequestWithContext(ctx, method, targetURL, nil)
 	if err != nil {
 		return 0, false
 	}
