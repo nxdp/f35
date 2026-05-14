@@ -8,52 +8,39 @@ import (
 	"time"
 
 	f35 "github.com/nxdp/f35"
+	"github.com/pelletier/go-toml/v2"
 	pflag "github.com/spf13/pflag"
-	"github.com/spf13/viper"
 )
 
-type configBinding struct {
-	key  string
-	flag string
+type fileConfig struct {
+	ResolversFile   *string `toml:"resolvers_file"`
+	Engine          *string `toml:"engine"`
+	ClientPath      *string `toml:"client_path"`
+	Domain          *string `toml:"domain"`
+	Args            *string `toml:"args"`
+	JSON            *bool   `toml:"json"`
+	Quiet           *bool   `toml:"quiet"`
+	Short           *bool   `toml:"short"`
+	ProbeURL        *string `toml:"probe_url"`
+	Probe           *bool   `toml:"probe"`
+	Download        *bool   `toml:"download"`
+	DownloadURL     *string `toml:"download_url"`
+	Upload          *bool   `toml:"upload"`
+	UploadURL       *string `toml:"upload_url"`
+	UploadBytes     *int    `toml:"upload_bytes"`
+	Whois           *bool   `toml:"whois"`
+	Proxy           *string `toml:"proxy"`
+	ProxyUser       *string `toml:"proxy_user"`
+	ProxyPass       *string `toml:"proxy_pass"`
+	Workers         *int    `toml:"workers"`
+	Retries         *int    `toml:"retries"`
+	Wait            *int    `toml:"wait"`
+	ProbeTimeout    *int    `toml:"probe_timeout"`
+	DownloadTimeout *int    `toml:"download_timeout"`
+	UploadTimeout   *int    `toml:"upload_timeout"`
+	WhoisTimeout    *int    `toml:"whois_timeout"`
+	StartPort       *int    `toml:"start_port"`
 }
-
-var configBindings = []configBinding{
-	{key: "resolvers_file", flag: "resolvers"},
-	{key: "engine", flag: "engine"},
-	{key: "client_path", flag: "client-path"},
-	{key: "domain", flag: "domain"},
-	{key: "args", flag: "args"},
-	{key: "json", flag: "json"},
-	{key: "quiet", flag: "quiet"},
-	{key: "short", flag: "short"},
-	{key: "probe_url", flag: "probe-url"},
-	{key: "probe", flag: "probe"},
-	{key: "download", flag: "download"},
-	{key: "download_url", flag: "download-url"},
-	{key: "upload", flag: "upload"},
-	{key: "upload_url", flag: "upload-url"},
-	{key: "upload_bytes", flag: "upload-bytes"},
-	{key: "whois", flag: "whois"},
-	{key: "proxy", flag: "proxy"},
-	{key: "proxy_user", flag: "proxy-user"},
-	{key: "proxy_pass", flag: "proxy-pass"},
-	{key: "workers", flag: "workers"},
-	{key: "retries", flag: "retries"},
-	{key: "wait", flag: "wait"},
-	{key: "probe_timeout", flag: "probe-timeout"},
-	{key: "download_timeout", flag: "download-timeout"},
-	{key: "upload_timeout", flag: "upload-timeout"},
-	{key: "whois_timeout", flag: "whois-timeout"},
-	{key: "start_port", flag: "start-port"},
-}
-
-var allowedConfigKeys = func() map[string]struct{} {
-	keys := make(map[string]struct{}, len(configBindings))
-	for _, binding := range configBindings {
-		keys[binding.key] = struct{}{}
-	}
-	return keys
-}()
 
 func parseFlags() (f35.Config, cliOptions, error) {
 	defaults := f35.DefaultConfig()
@@ -62,144 +49,23 @@ func parseFlags() (f35.Config, cliOptions, error) {
 		return f35.Config{}, cliOptions{}, err
 	}
 
-	v, err := newConfig(fs)
-	if err != nil {
-		return f35.Config{}, cliOptions{}, err
-	}
-
-	cfg, opts, err := buildConfig(v, fs)
-	if err != nil {
-		return f35.Config{}, cliOptions{}, err
-	}
-
-	opts.colorize = !opts.json && fileIsTerminal(os.Stdout)
-	opts.logColorize = fileIsTerminal(os.Stderr)
-	return cfg, opts, nil
-}
-
-func newConfig(fs *pflag.FlagSet) (*viper.Viper, error) {
-	v := viper.New()
-
-	configPath, err := fs.GetString("config")
-	if err != nil {
-		return nil, fmt.Errorf("read --config: %w", err)
-	}
-	configPath = strings.TrimSpace(configPath)
-	if configPath != "" {
-		v.SetConfigFile(configPath)
-		v.SetConfigType("toml")
-		if err := v.ReadInConfig(); err != nil {
-			return nil, fmt.Errorf("read config file: %w", err)
-		}
-		if err := validateConfigKeys(v); err != nil {
-			return nil, err
-		}
-	}
-
-	return v, nil
-}
-
-func validateConfigKeys(v *viper.Viper) error {
-	for _, key := range v.AllKeys() {
-		if _, ok := allowedConfigKeys[strings.ToLower(key)]; !ok {
-			return fmt.Errorf("unknown config key: %s", key)
-		}
-	}
-	return nil
-}
-
-func buildConfig(v *viper.Viper, fs *pflag.FlagSet) (f35.Config, cliOptions, error) {
-	defaults := f35.DefaultConfig()
 	cfg := defaults
 	opts := cliOptions{}
 
-	getString := func(name string) string {
-		value, _ := fs.GetString(name)
-		return value
+	configPath, err := fs.GetString("config")
+	if err != nil {
+		return f35.Config{}, cliOptions{}, fmt.Errorf("read --config: %w", err)
 	}
-	getBool := func(name string) bool {
-		value, _ := fs.GetBool(name)
-		return value
-	}
-	getInt := func(name string) int {
-		value, _ := fs.GetInt(name)
-		return value
-	}
-
-	applyString := func(key string, changed bool, value string, dst *string) {
-		if changed {
-			*dst = value
-			return
+	configPath = strings.TrimSpace(configPath)
+	if configPath != "" {
+		fileCfg, err := loadFileConfig(configPath)
+		if err != nil {
+			return f35.Config{}, cliOptions{}, err
 		}
-		if v.IsSet(key) {
-			*dst = v.GetString(key)
-		}
-	}
-	applyBool := func(key string, changed bool, value bool, dst *bool) {
-		if changed {
-			*dst = value
-			return
-		}
-		if v.IsSet(key) {
-			*dst = v.GetBool(key)
-		}
-	}
-	applyInt := func(key string, changed bool, value int, dst *int) {
-		if changed {
-			*dst = value
-			return
-		}
-		if v.IsSet(key) {
-			*dst = v.GetInt(key)
-		}
-	}
-	applySeconds := func(key string, changed bool, value int, dst *time.Duration) {
-		if changed {
-			*dst = time.Duration(value) * time.Second
-			return
-		}
-		if v.IsSet(key) {
-			*dst = time.Duration(v.GetInt(key)) * time.Second
-		}
-	}
-	applyMillis := func(key string, changed bool, value int, dst *time.Duration) {
-		if changed {
-			*dst = time.Duration(value) * time.Millisecond
-			return
-		}
-		if v.IsSet(key) {
-			*dst = time.Duration(v.GetInt(key)) * time.Millisecond
-		}
+		applyFileConfig(&cfg, &opts, fileCfg)
 	}
 
-	applyString("engine", fs.Lookup("engine").Changed, getString("engine"), &cfg.Engine)
-	applyString("client_path", fs.Lookup("client-path").Changed, getString("client-path"), &cfg.ClientPath)
-	applyString("domain", fs.Lookup("domain").Changed, getString("domain"), &cfg.Domain)
-	applyString("probe_url", fs.Lookup("probe-url").Changed, getString("probe-url"), &cfg.ProbeURL)
-	applyString("download_url", fs.Lookup("download-url").Changed, getString("download-url"), &cfg.DownloadURL)
-	applyString("upload_url", fs.Lookup("upload-url").Changed, getString("upload-url"), &cfg.UploadURL)
-	applyBool("probe", fs.Lookup("probe").Changed, getBool("probe"), &cfg.Probe)
-	applyBool("download", fs.Lookup("download").Changed, getBool("download"), &cfg.Download)
-	applyBool("upload", fs.Lookup("upload").Changed, getBool("upload"), &cfg.Upload)
-	applyBool("whois", fs.Lookup("whois").Changed, getBool("whois"), &cfg.Whois)
-	applyString("proxy", fs.Lookup("proxy").Changed, getString("proxy"), &cfg.Proxy)
-	applyString("proxy_user", fs.Lookup("proxy-user").Changed, getString("proxy-user"), &cfg.ProxyUser)
-	applyString("proxy_pass", fs.Lookup("proxy-pass").Changed, getString("proxy-pass"), &cfg.ProxyPass)
-	applyInt("workers", fs.Lookup("workers").Changed, getInt("workers"), &cfg.Workers)
-	applyInt("retries", fs.Lookup("retries").Changed, getInt("retries"), &cfg.Retries)
-	applyMillis("wait", fs.Lookup("wait").Changed, getInt("wait"), &cfg.TunnelWait)
-	applySeconds("probe_timeout", fs.Lookup("probe-timeout").Changed, getInt("probe-timeout"), &cfg.ProbeTimeout)
-	applySeconds("download_timeout", fs.Lookup("download-timeout").Changed, getInt("download-timeout"), &cfg.DownloadTimeout)
-	applySeconds("upload_timeout", fs.Lookup("upload-timeout").Changed, getInt("upload-timeout"), &cfg.UploadTimeout)
-	applyInt("upload_bytes", fs.Lookup("upload-bytes").Changed, getInt("upload-bytes"), &cfg.UploadBytes)
-	applySeconds("whois_timeout", fs.Lookup("whois-timeout").Changed, getInt("whois-timeout"), &cfg.WhoisTimeout)
-	applyInt("start_port", fs.Lookup("start-port").Changed, getInt("start-port"), &cfg.StartPort)
-
-	applyString("resolvers_file", fs.Lookup("resolvers").Changed, getString("resolvers"), &opts.resolversFile)
-	applyString("args", fs.Lookup("args").Changed, getString("args"), &opts.args)
-	applyBool("json", fs.Lookup("json").Changed, getBool("json"), &opts.json)
-	applyBool("quiet", fs.Lookup("quiet").Changed, getBool("quiet"), &opts.quiet)
-	applyBool("short", fs.Lookup("short").Changed, getBool("short"), &opts.short)
+	applyFlagOverrides(&cfg, &opts, fs)
 
 	if opts.resolversFile == "" || strings.TrimSpace(cfg.Domain) == "" {
 		return f35.Config{}, cliOptions{}, fmt.Errorf("--resolvers and --domain are required")
@@ -213,7 +79,153 @@ func buildConfig(v *viper.Viper, fs *pflag.FlagSet) (f35.Config, cliOptions, err
 		cfg.ExtraArgs = extraArgs
 	}
 
+	opts.colorize = !opts.json && fileIsTerminal(os.Stdout)
+	opts.logColorize = fileIsTerminal(os.Stderr)
 	return cfg, opts, nil
+}
+
+func loadFileConfig(path string) (fileConfig, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return fileConfig{}, fmt.Errorf("read config file: %w", err)
+	}
+	defer f.Close()
+
+	var cfg fileConfig
+	if err := toml.NewDecoder(f).DisallowUnknownFields().Decode(&cfg); err != nil {
+		return fileConfig{}, fmt.Errorf("read config file: %w", err)
+	}
+	return cfg, nil
+}
+
+func applyFileConfig(cfg *f35.Config, opts *cliOptions, fileCfg fileConfig) {
+	applyString(&opts.resolversFile, fileCfg.ResolversFile)
+	applyString(&cfg.Engine, fileCfg.Engine)
+	applyString(&cfg.ClientPath, fileCfg.ClientPath)
+	applyString(&cfg.Domain, fileCfg.Domain)
+	applyString(&opts.args, fileCfg.Args)
+	applyBool(&opts.json, fileCfg.JSON)
+	applyBool(&opts.quiet, fileCfg.Quiet)
+	applyBool(&opts.short, fileCfg.Short)
+	applyString(&cfg.ProbeURL, fileCfg.ProbeURL)
+	applyBool(&cfg.Probe, fileCfg.Probe)
+	applyBool(&cfg.Download, fileCfg.Download)
+	applyString(&cfg.DownloadURL, fileCfg.DownloadURL)
+	applyBool(&cfg.Upload, fileCfg.Upload)
+	applyString(&cfg.UploadURL, fileCfg.UploadURL)
+	applyInt(&cfg.UploadBytes, fileCfg.UploadBytes)
+	applyBool(&cfg.Whois, fileCfg.Whois)
+	applyString(&cfg.Proxy, fileCfg.Proxy)
+	applyString(&cfg.ProxyUser, fileCfg.ProxyUser)
+	applyString(&cfg.ProxyPass, fileCfg.ProxyPass)
+	applyInt(&cfg.Workers, fileCfg.Workers)
+	applyInt(&cfg.Retries, fileCfg.Retries)
+	applyMillis(&cfg.TunnelWait, fileCfg.Wait)
+	applySeconds(&cfg.ProbeTimeout, fileCfg.ProbeTimeout)
+	applySeconds(&cfg.DownloadTimeout, fileCfg.DownloadTimeout)
+	applySeconds(&cfg.UploadTimeout, fileCfg.UploadTimeout)
+	applySeconds(&cfg.WhoisTimeout, fileCfg.WhoisTimeout)
+	applyInt(&cfg.StartPort, fileCfg.StartPort)
+}
+
+func applyFlagOverrides(cfg *f35.Config, opts *cliOptions, fs *pflag.FlagSet) {
+	applyChangedString(fs, "resolvers", &opts.resolversFile)
+	applyChangedString(fs, "engine", &cfg.Engine)
+	applyChangedString(fs, "client-path", &cfg.ClientPath)
+	applyChangedString(fs, "domain", &cfg.Domain)
+	applyChangedString(fs, "args", &opts.args)
+	applyChangedBool(fs, "json", &opts.json)
+	applyChangedBool(fs, "quiet", &opts.quiet)
+	applyChangedBool(fs, "short", &opts.short)
+	applyChangedString(fs, "probe-url", &cfg.ProbeURL)
+	applyChangedBool(fs, "probe", &cfg.Probe)
+	applyChangedBool(fs, "download", &cfg.Download)
+	applyChangedString(fs, "download-url", &cfg.DownloadURL)
+	applyChangedBool(fs, "upload", &cfg.Upload)
+	applyChangedString(fs, "upload-url", &cfg.UploadURL)
+	applyChangedInt(fs, "upload-bytes", &cfg.UploadBytes)
+	applyChangedBool(fs, "whois", &cfg.Whois)
+	applyChangedString(fs, "proxy", &cfg.Proxy)
+	applyChangedString(fs, "proxy-user", &cfg.ProxyUser)
+	applyChangedString(fs, "proxy-pass", &cfg.ProxyPass)
+	applyChangedInt(fs, "workers", &cfg.Workers)
+	applyChangedInt(fs, "retries", &cfg.Retries)
+	applyChangedMillis(fs, "wait", &cfg.TunnelWait)
+	applyChangedSeconds(fs, "probe-timeout", &cfg.ProbeTimeout)
+	applyChangedSeconds(fs, "download-timeout", &cfg.DownloadTimeout)
+	applyChangedSeconds(fs, "upload-timeout", &cfg.UploadTimeout)
+	applyChangedSeconds(fs, "whois-timeout", &cfg.WhoisTimeout)
+	applyChangedInt(fs, "start-port", &cfg.StartPort)
+}
+
+func applyString(dst *string, src *string) {
+	if src != nil {
+		*dst = *src
+	}
+}
+
+func applyBool(dst *bool, src *bool) {
+	if src != nil {
+		*dst = *src
+	}
+}
+
+func applyInt(dst *int, src *int) {
+	if src != nil {
+		*dst = *src
+	}
+}
+
+func applySeconds(dst *time.Duration, src *int) {
+	if src != nil {
+		*dst = time.Duration(*src) * time.Second
+	}
+}
+
+func applyMillis(dst *time.Duration, src *int) {
+	if src != nil {
+		*dst = time.Duration(*src) * time.Millisecond
+	}
+}
+
+func applyChangedString(fs *pflag.FlagSet, name string, dst *string) {
+	if !fs.Lookup(name).Changed {
+		return
+	}
+	value, _ := fs.GetString(name)
+	*dst = value
+}
+
+func applyChangedBool(fs *pflag.FlagSet, name string, dst *bool) {
+	if !fs.Lookup(name).Changed {
+		return
+	}
+	value, _ := fs.GetBool(name)
+	*dst = value
+}
+
+func applyChangedInt(fs *pflag.FlagSet, name string, dst *int) {
+	if !fs.Lookup(name).Changed {
+		return
+	}
+	value, _ := fs.GetInt(name)
+	*dst = value
+}
+
+func applyChangedSeconds(fs *pflag.FlagSet, name string, dst *time.Duration) {
+	if !fs.Lookup(name).Changed {
+		return
+	}
+	value, _ := fs.GetInt(name)
+	*dst = time.Duration(value) * time.Second
+}
+
+func applyChangedMillis(fs *pflag.FlagSet, name string, dst *time.Duration) {
+	if !fs.Lookup(name).Changed {
+		return
+	}
+	value, _ := fs.GetInt(name)
+	*dst = time.Duration(value) * time.Millisecond
 }
 
 func newFlagSet(defaults f35.Config) *pflag.FlagSet {
