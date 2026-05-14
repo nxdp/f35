@@ -65,9 +65,15 @@ func worker(port int, cfg *runtimeConfig, jobs <-chan parsedResolver, hooks Hook
 
 	client := &http.Client{
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		Timeout:       0,
 		Transport: &http.Transport{
-			Proxy:             http.ProxyURL(proxyURL),
-			DisableKeepAlives: true,
+			Proxy:                 http.ProxyURL(proxyURL),
+			DisableKeepAlives:     true,
+			DialContext:           (&net.Dialer{Timeout: 0, KeepAlive: 0}).DialContext,
+			TLSHandshakeTimeout:   0,
+			ResponseHeaderTimeout: 0,
+			ExpectContinueTimeout: 0,
+			IdleConnTimeout:       0,
 		},
 	}
 
@@ -124,9 +130,10 @@ func tryResolver(resolver parsedResolver, port int, cfg *runtimeConfig, client *
 		return Result{}, false
 	}
 
-	waitCh := make(chan error, 1)
+	cmdDone := make(chan struct{})
 	go func() {
-		waitCh <- cmd.Wait()
+		_ = cmd.Wait()
+		close(cmdDone)
 	}()
 
 	waited := false
@@ -135,14 +142,14 @@ func tryResolver(resolver parsedResolver, port int, cfg *runtimeConfig, client *
 			return
 		}
 		_ = cmd.Process.Kill()
-		<-waitCh
+		<-cmdDone
 	}()
 
 	if cfg.TunnelWait > 0 {
 		timer := time.NewTimer(cfg.TunnelWait)
 		select {
 		case <-timer.C:
-		case <-waitCh:
+		case <-cmdDone:
 			waited = true
 			if !timer.Stop() {
 				select {
@@ -166,7 +173,9 @@ func tryResolver(resolver parsedResolver, port int, cfg *runtimeConfig, client *
 
 	if cfg.Download {
 		result.Download = "fail"
-		latency, ok := doHTTPCheck(client, cfg.DownloadURL, cfg.DownloadTimeout, true)
+		latency, ok := runCheckUntilSuccess(cfg.DownloadTimeout, cmdDone, func(timeout time.Duration) (int64, bool) {
+			return doHTTPCheck(client, cfg.DownloadURL, timeout, true)
+		})
 		if ok {
 			result.Download = "ok"
 			result.LatencyMS = latency
@@ -176,7 +185,9 @@ func tryResolver(resolver parsedResolver, port int, cfg *runtimeConfig, client *
 
 	if cfg.Upload {
 		result.Upload = "fail"
-		latency, ok := doUploadCheck(client, cfg.UploadURL, cfg.UploadTimeout, cfg.uploadPayload)
+		latency, ok := runCheckUntilSuccess(cfg.UploadTimeout, cmdDone, func(timeout time.Duration) (int64, bool) {
+			return doUploadCheck(client, cfg.UploadURL, timeout, cfg.uploadPayload)
+		})
 		if ok {
 			result.Upload = "ok"
 			if bestPriority < 3 {
@@ -188,7 +199,9 @@ func tryResolver(resolver parsedResolver, port int, cfg *runtimeConfig, client *
 
 	if cfg.Whois {
 		result.Whois = "fail"
-		latency, org, country, ok := lookupResolverInfo(client, resolver.ip.String(), cfg.WhoisTimeout)
+		latency, org, country, ok := runWhoisUntilSuccess(cfg.WhoisTimeout, cmdDone, func(timeout time.Duration) (int64, string, string, bool) {
+			return lookupResolverInfo(client, resolver.ip.String(), timeout)
+		})
 		if ok {
 			result.Whois = "ok"
 			result.Org = org
@@ -202,7 +215,9 @@ func tryResolver(resolver parsedResolver, port int, cfg *runtimeConfig, client *
 
 	if cfg.Probe {
 		result.Probe = "fail"
-		latency, ok := doHTTPCheck(client, cfg.ProbeURL, cfg.ProbeTimeout, false)
+		latency, ok := runCheckUntilSuccess(cfg.ProbeTimeout, cmdDone, func(timeout time.Duration) (int64, bool) {
+			return doHTTPCheck(client, cfg.ProbeURL, timeout, false)
+		})
 		if ok {
 			result.Probe = "ok"
 			if bestPriority < 1 {
@@ -217,4 +232,54 @@ func tryResolver(resolver parsedResolver, port int, cfg *runtimeConfig, client *
 	}
 
 	return result, true
+}
+
+func runCheckUntilSuccess(timeout time.Duration, cmdDone <-chan struct{}, check func(time.Duration) (int64, bool)) (int64, bool) {
+	deadline := time.Now().Add(timeout)
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return 0, false
+		}
+
+		latency, ok := check(remaining)
+		if ok {
+			return latency, true
+		}
+
+		timer := time.NewTimer(200 * time.Millisecond)
+		select {
+		case <-cmdDone:
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return 0, false
+		case <-timer.C:
+		}
+	}
+}
+
+func runWhoisUntilSuccess(timeout time.Duration, cmdDone <-chan struct{}, check func(time.Duration) (int64, string, string, bool)) (int64, string, string, bool) {
+	deadline := time.Now().Add(timeout)
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return 0, "unknown", "unknown", false
+		}
+
+		latency, org, country, ok := check(remaining)
+		if ok {
+			return latency, org, country, true
+		}
+
+		timer := time.NewTimer(200 * time.Millisecond)
+		select {
+		case <-cmdDone:
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return 0, "unknown", "unknown", false
+		case <-timer.C:
+		}
+	}
 }

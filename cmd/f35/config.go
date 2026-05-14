@@ -62,12 +62,12 @@ func parseFlags() (f35.Config, cliOptions, error) {
 		return f35.Config{}, cliOptions{}, err
 	}
 
-	v, err := newConfig(fs, defaults)
+	v, err := newConfig(fs)
 	if err != nil {
 		return f35.Config{}, cliOptions{}, err
 	}
 
-	cfg, opts, err := buildConfig(v)
+	cfg, opts, err := buildConfig(v, fs)
 	if err != nil {
 		return f35.Config{}, cliOptions{}, err
 	}
@@ -77,9 +77,8 @@ func parseFlags() (f35.Config, cliOptions, error) {
 	return cfg, opts, nil
 }
 
-func newConfig(fs *pflag.FlagSet, defaults f35.Config) (*viper.Viper, error) {
+func newConfig(fs *pflag.FlagSet) (*viper.Viper, error) {
 	v := viper.New()
-	setConfigDefaults(v, defaults)
 
 	configPath, err := fs.GetString("config")
 	if err != nil {
@@ -97,12 +96,6 @@ func newConfig(fs *pflag.FlagSet, defaults f35.Config) (*viper.Viper, error) {
 		}
 	}
 
-	for _, binding := range configBindings {
-		if err := v.BindPFlag(binding.key, fs.Lookup(binding.flag)); err != nil {
-			return nil, fmt.Errorf("bind flag %s: %w", binding.flag, err)
-		}
-	}
-
 	return v, nil
 }
 
@@ -115,69 +108,98 @@ func validateConfigKeys(v *viper.Viper) error {
 	return nil
 }
 
-func setConfigDefaults(v *viper.Viper, defaults f35.Config) {
-	v.SetDefault("resolvers_file", "")
-	v.SetDefault("engine", defaults.Engine)
-	v.SetDefault("client_path", defaults.ClientPath)
-	v.SetDefault("domain", defaults.Domain)
-	v.SetDefault("args", "")
-	v.SetDefault("json", false)
-	v.SetDefault("quiet", false)
-	v.SetDefault("short", false)
-	v.SetDefault("probe_url", defaults.ProbeURL)
-	v.SetDefault("probe", defaults.Probe)
-	v.SetDefault("download", defaults.Download)
-	v.SetDefault("download_url", defaults.DownloadURL)
-	v.SetDefault("upload", defaults.Upload)
-	v.SetDefault("upload_url", defaults.UploadURL)
-	v.SetDefault("upload_bytes", defaults.UploadBytes)
-	v.SetDefault("whois", defaults.Whois)
-	v.SetDefault("proxy", defaults.Proxy)
-	v.SetDefault("proxy_user", defaults.ProxyUser)
-	v.SetDefault("proxy_pass", defaults.ProxyPass)
-	v.SetDefault("workers", defaults.Workers)
-	v.SetDefault("retries", defaults.Retries)
-	v.SetDefault("wait", int(defaults.TunnelWait/time.Millisecond))
-	v.SetDefault("probe_timeout", int(defaults.ProbeTimeout/time.Second))
-	v.SetDefault("download_timeout", int(defaults.DownloadTimeout/time.Second))
-	v.SetDefault("upload_timeout", int(defaults.UploadTimeout/time.Second))
-	v.SetDefault("whois_timeout", int(defaults.WhoisTimeout/time.Second))
-	v.SetDefault("start_port", defaults.StartPort)
-}
+func buildConfig(v *viper.Viper, fs *pflag.FlagSet) (f35.Config, cliOptions, error) {
+	defaults := f35.DefaultConfig()
+	cfg := defaults
+	opts := cliOptions{}
 
-func buildConfig(v *viper.Viper) (f35.Config, cliOptions, error) {
-	cfg := f35.Config{
-		Engine:          v.GetString("engine"),
-		ClientPath:      v.GetString("client_path"),
-		Domain:          v.GetString("domain"),
-		ProbeURL:        v.GetString("probe_url"),
-		DownloadURL:     v.GetString("download_url"),
-		UploadURL:       v.GetString("upload_url"),
-		Probe:           v.GetBool("probe"),
-		Download:        v.GetBool("download"),
-		Upload:          v.GetBool("upload"),
-		Whois:           v.GetBool("whois"),
-		Proxy:           v.GetString("proxy"),
-		ProxyUser:       v.GetString("proxy_user"),
-		ProxyPass:       v.GetString("proxy_pass"),
-		Workers:         v.GetInt("workers"),
-		Retries:         v.GetInt("retries"),
-		TunnelWait:      time.Duration(v.GetInt("wait")) * time.Millisecond,
-		ProbeTimeout:    time.Duration(v.GetInt("probe_timeout")) * time.Second,
-		DownloadTimeout: time.Duration(v.GetInt("download_timeout")) * time.Second,
-		UploadTimeout:   time.Duration(v.GetInt("upload_timeout")) * time.Second,
-		UploadBytes:     v.GetInt("upload_bytes"),
-		WhoisTimeout:    time.Duration(v.GetInt("whois_timeout")) * time.Second,
-		StartPort:       v.GetInt("start_port"),
+	getString := func(name string) string {
+		value, _ := fs.GetString(name)
+		return value
+	}
+	getBool := func(name string) bool {
+		value, _ := fs.GetBool(name)
+		return value
+	}
+	getInt := func(name string) int {
+		value, _ := fs.GetInt(name)
+		return value
 	}
 
-	opts := cliOptions{
-		resolversFile: strings.TrimSpace(v.GetString("resolvers_file")),
-		args:          v.GetString("args"),
-		json:          v.GetBool("json"),
-		quiet:         v.GetBool("quiet"),
-		short:         v.GetBool("short"),
+	applyString := func(key string, changed bool, value string, dst *string) {
+		if changed {
+			*dst = value
+			return
+		}
+		if v.IsSet(key) {
+			*dst = v.GetString(key)
+		}
 	}
+	applyBool := func(key string, changed bool, value bool, dst *bool) {
+		if changed {
+			*dst = value
+			return
+		}
+		if v.IsSet(key) {
+			*dst = v.GetBool(key)
+		}
+	}
+	applyInt := func(key string, changed bool, value int, dst *int) {
+		if changed {
+			*dst = value
+			return
+		}
+		if v.IsSet(key) {
+			*dst = v.GetInt(key)
+		}
+	}
+	applySeconds := func(key string, changed bool, value int, dst *time.Duration) {
+		if changed {
+			*dst = time.Duration(value) * time.Second
+			return
+		}
+		if v.IsSet(key) {
+			*dst = time.Duration(v.GetInt(key)) * time.Second
+		}
+	}
+	applyMillis := func(key string, changed bool, value int, dst *time.Duration) {
+		if changed {
+			*dst = time.Duration(value) * time.Millisecond
+			return
+		}
+		if v.IsSet(key) {
+			*dst = time.Duration(v.GetInt(key)) * time.Millisecond
+		}
+	}
+
+	applyString("engine", fs.Lookup("engine").Changed, getString("engine"), &cfg.Engine)
+	applyString("client_path", fs.Lookup("client-path").Changed, getString("client-path"), &cfg.ClientPath)
+	applyString("domain", fs.Lookup("domain").Changed, getString("domain"), &cfg.Domain)
+	applyString("probe_url", fs.Lookup("probe-url").Changed, getString("probe-url"), &cfg.ProbeURL)
+	applyString("download_url", fs.Lookup("download-url").Changed, getString("download-url"), &cfg.DownloadURL)
+	applyString("upload_url", fs.Lookup("upload-url").Changed, getString("upload-url"), &cfg.UploadURL)
+	applyBool("probe", fs.Lookup("probe").Changed, getBool("probe"), &cfg.Probe)
+	applyBool("download", fs.Lookup("download").Changed, getBool("download"), &cfg.Download)
+	applyBool("upload", fs.Lookup("upload").Changed, getBool("upload"), &cfg.Upload)
+	applyBool("whois", fs.Lookup("whois").Changed, getBool("whois"), &cfg.Whois)
+	applyString("proxy", fs.Lookup("proxy").Changed, getString("proxy"), &cfg.Proxy)
+	applyString("proxy_user", fs.Lookup("proxy-user").Changed, getString("proxy-user"), &cfg.ProxyUser)
+	applyString("proxy_pass", fs.Lookup("proxy-pass").Changed, getString("proxy-pass"), &cfg.ProxyPass)
+	applyInt("workers", fs.Lookup("workers").Changed, getInt("workers"), &cfg.Workers)
+	applyInt("retries", fs.Lookup("retries").Changed, getInt("retries"), &cfg.Retries)
+	applyMillis("wait", fs.Lookup("wait").Changed, getInt("wait"), &cfg.TunnelWait)
+	applySeconds("probe_timeout", fs.Lookup("probe-timeout").Changed, getInt("probe-timeout"), &cfg.ProbeTimeout)
+	applySeconds("download_timeout", fs.Lookup("download-timeout").Changed, getInt("download-timeout"), &cfg.DownloadTimeout)
+	applySeconds("upload_timeout", fs.Lookup("upload-timeout").Changed, getInt("upload-timeout"), &cfg.UploadTimeout)
+	applyInt("upload_bytes", fs.Lookup("upload-bytes").Changed, getInt("upload-bytes"), &cfg.UploadBytes)
+	applySeconds("whois_timeout", fs.Lookup("whois-timeout").Changed, getInt("whois-timeout"), &cfg.WhoisTimeout)
+	applyInt("start_port", fs.Lookup("start-port").Changed, getInt("start-port"), &cfg.StartPort)
+
+	applyString("resolvers_file", fs.Lookup("resolvers").Changed, getString("resolvers"), &opts.resolversFile)
+	applyString("args", fs.Lookup("args").Changed, getString("args"), &opts.args)
+	applyBool("json", fs.Lookup("json").Changed, getBool("json"), &opts.json)
+	applyBool("quiet", fs.Lookup("quiet").Changed, getBool("quiet"), &opts.quiet)
+	applyBool("short", fs.Lookup("short").Changed, getBool("short"), &opts.short)
 
 	if opts.resolversFile == "" || strings.TrimSpace(cfg.Domain) == "" {
 		return f35.Config{}, cliOptions{}, fmt.Errorf("--resolvers and --domain are required")
